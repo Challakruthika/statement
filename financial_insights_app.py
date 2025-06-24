@@ -17,20 +17,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Sidebar ---
 st.sidebar.image("https://img.icons8.com/color/96/000000/bank.png", width=80)
-st.sidebar.title("\ud83d\udca1 About This App")
+st.sidebar.title("💡 About This App")
 st.sidebar.info(
     "This dashboard provides AI-powered financial insights and predictions from your bank statements. "
     "Upload your CSV files to get started! Works with SBI, ICICI, PNB, APGB, and more."
 )
 st.sidebar.markdown("[GitHub Repo](https://github.com/Challakruthika/data_bank)")
 
-# --- Main Title ---
-st.markdown("<h1 style='text-align: center; color: #4F8BF9;'>\ud83d\udcca Financial Insights & AI Predictions</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #4F8BF9;'>📊 Financial Insights & AI Predictions</h1>", unsafe_allow_html=True)
 st.markdown("<h4 style='text-align: center; color: #888;'>Upload your bank statement CSV files below</h4>", unsafe_allow_html=True)
 
-# --- File Uploader ---
 uploaded_files = st.file_uploader(
     "Upload one or more bank statement CSV files",
     type="csv",
@@ -51,20 +48,18 @@ if uploaded_files:
         if dfs:
             data = pd.concat(dfs, ignore_index=True)
 else:
-    st.info("\ud83d\udc46 Please upload one or more CSV files to begin.")
+    st.info("👆 Please upload one or more CSV files to begin.")
 
 if data is not None and not data.empty:
-    st.success("\u2705 Data uploaded successfully!")
-    with st.expander("\ud83d\udd0d Preview Uploaded Data"):
+    st.success("✅ Data uploaded successfully!")
+    with st.expander("🔍 Preview Uploaded Data"):
         st.dataframe(data.head())
         st.write("*Columns detected:*", list(data.columns))
 
-    # --- User selects date and amount columns ---
-    st.markdown("### \ud83d\udee0 Select Columns")
+    st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
 
-    # --- Amount logic robustness ---
     use_separate = st.checkbox("My statement has separate columns for Deposit and Withdrawal")
     if use_separate:
         deposit_col = st.selectbox("Select the deposit/credit column", options=data.columns)
@@ -83,13 +78,11 @@ if data is not None and not data.empty:
         if amount_sign == "Expense/Debit":
             data[amount_col] = -data[amount_col]
 
-    # --- Data Cleaning ---
     data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
     data = data.dropna(subset=[date_col])
     data = data.dropna(subset=[amount_col])
     data['month'] = data[date_col].dt.to_period('M')
 
-    # --- Category Analysis ---
     def categorize(desc):
         desc = str(desc).lower()
         if 'salary' in desc or 'credit' in desc or 'neft' in desc: return 'Salary/Income'
@@ -107,16 +100,14 @@ if data is not None and not data.empty:
     else:
         data['category'] = 'Others'
 
-    # --- Bank Extraction ---
     data['bank'] = data['source_file'].str.extract(r'(apgb|icici|pnb|sbi)', expand=False).str.upper().fillna('OTHER')
 
-    # --- Tabs ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "\ud83c\udfe0 Summary", "\ud83d\udcca Trends", "\ud83d\udd2e Predictions", "\ud83d\udea8 Anomalies", "\u2b07 Download"
+        "🏠 Summary", "📊 Trends", "🔮 Predictions", "🚨 Anomalies", "⬇ Download"
     ])
 
     with tab1:
-        st.markdown("## \ud83d\udcc8 Summary Statistics")
+        st.markdown("## 📈 Summary Statistics")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Records", len(data))
@@ -124,25 +115,35 @@ if data is not None and not data.empty:
             st.metric("Total Net Flow", f"{data[amount_col].sum():,.2f}")
         with col3:
             st.metric("Avg. Monthly Net Flow", f"{data.groupby('month')[amount_col].sum().mean():,.2f}")
+
+        if use_separate:
+            total_income = data[deposit_col].sum()
+            total_expense = data[withdrawal_col].sum()
+            savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
+        else:
+            if amount_sign == "Income/Credit":
+                total_income = data[data[amount_col] > 0][amount_col].sum()
+                total_expense = -data[data[amount_col] < 0][amount_col].sum()
+            else:
+                total_expense = data[data[amount_col] > 0][amount_col].sum()
+                total_income = -data[data[amount_col] < 0][amount_col].sum()
+            savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
+
         with col4:
-            st.metric("Savings Rate (%)", f"{100 * data[data[amount_col]>0][amount_col].sum() / abs(data[amount_col].sum()):.2f}")
+            st.metric("Savings Rate (%)", f"{savings_rate:.2f}")
 
-        st.markdown("### \ud83d\udcb5 Income vs. Expense Breakdown")
-        income = data[data[amount_col] > 0][amount_col].sum()
-        expense = data[data[amount_col] < 0][amount_col].sum()
-        st.success(f"*Total Income:* {income:,.2f}")
-        st.error(f"*Total Expenses:* {expense:,.2f}")
+        st.markdown("### 💵 Income vs. Expense Breakdown")
+        st.success(f"*Total Income:* {total_income:,.2f}")
+        st.error(f"*Total Expenses:* {total_expense:,.2f}")
 
-        st.markdown("### \ud83c\udfe6 Bank-wise Net Flow")
-        bank_total = data.groupby('bank')[amount_col].sum().sort_values(ascending=False)
-        st.bar_chart(bank_total)
-        if not bank_total.empty:
-            top_bank = bank_total.index[0]
-            st.info(f"**Insight:** Your highest net flow is with **{top_bank}** bank.")
-
-        st.markdown("### \ud83e\udd67 Expense Breakdown by Category")
-        expense_cats = data[data[amount_col] < 0].groupby('category')[amount_col].sum().abs()
-        expense_cats = expense_cats[expense_cats > expense_cats.sum() * 0.02]
+        st.markdown("### 🥧 Expense Breakdown by Category")
+        if use_separate:
+            expense_cats = data.groupby('category')[withdrawal_col].sum().abs()
+        else:
+            if amount_sign == "Income/Credit":
+                expense_cats = data[data[amount_col] < 0].groupby('category')[amount_col].sum().abs()
+            else:
+                expense_cats = data[data[amount_col] > 0].groupby('category')[amount_col].sum().abs()
         if not expense_cats.empty:
             fig_pie, ax_pie = plt.subplots()
             expense_cats.plot.pie(autopct='%1.1f%%', ax=ax_pie, colormap='tab20')
@@ -156,15 +157,20 @@ if data is not None and not data.empty:
         else:
             st.info("No expenses found for pie chart.")
 
-    with tab2:
-        st.markdown("### \ud83d\udcc5 Monthly Net Flow (Income - Expenses)")
-        monthly = data.groupby('month')[amount_col].sum().sort_index()
-        fig, ax = plt.subplots(figsize=(10, 4))
-        monthly.plot(kind='bar', ax=ax, color='#4F8BF9')
-        ax.set_ylabel('Net Amount')
-        ax.set_title('Monthly Net Flow')
-        st.pyplot(fig)
+        st.markdown("### 🏦 Bank-wise Net Flow")
+        bank_total = data.groupby('bank')[amount_col].sum().sort_values(ascending=False)
+        st.bar_chart(bank_total)
+        if not bank_total.empty:
+            top_bank = bank_total.index[0]
+            st.info(f"**Insight:** Your highest net flow is with **{top_bank}** bank.")
 
+    with tab2:
+        st.markdown("### 📅 Monthly Net Flow (Income - Expenses)")
+        monthly = data.groupby('month')[amount_col].sum()
+        fig, ax = plt.subplots(figsize=(10,4))
+        monthly.plot(kind='bar', ax=ax, color='#4F8BF9')
+        plt.ylabel('Net Amount')
+        st.pyplot(fig)
         if not monthly.empty:
             trend = "increasing" if monthly.diff().mean() > 0 else "decreasing"
             best_month = monthly.idxmax()
@@ -175,17 +181,15 @@ if data is not None and not data.empty:
                 f"**Worst Month:** {worst_month} ({monthly.min():,.2f})"
             )
             if (monthly < 0).any():
-                st.warning("\u26a0\ufe0f You had negative net flow in some months. Consider reviewing your expenses for those periods.")
+                st.warning("⚠️ You had negative net flow in some months. Consider reviewing your expenses for those periods.")
 
-        st.markdown("### \ud83c\udff7 Monthly Spending by Category")
-        cat_monthly = data[data[amount_col] < 0].groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
-        cat_monthly = cat_monthly.sort_index()
-        fig2, ax2 = plt.subplots(figsize=(12, 5))
+        st.markdown("### 🏷 Monthly Spending by Category")
+        cat_monthly = data.groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
+        fig2, ax2 = plt.subplots(figsize=(12,5))
         cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
-        ax2.set_ylabel('Amount')
-        ax2.set_title('Monthly Expenses by Category')
+        plt.ylabel('Amount')
         st.pyplot(fig2)
-        top_cat = data[data[amount_col] < 0].groupby('category')[amount_col].sum().sort_values().head(1)
+        top_cat = data.groupby('category')[amount_col].sum().sort_values(ascending=False).head(1)
         if not top_cat.empty:
             st.info(
                 f"**Insights:**\n"
@@ -193,21 +197,18 @@ if data is not None and not data.empty:
                 f"- Consider reviewing this category for potential savings."
             )
 
-        st.markdown("### \ud83c\udfe6 Monthly Net Flow by Bank")
-        bank_monthly = data.groupby(['month', 'bank'])[amount_col].sum().unstack().fillna(0).sort_index()
-        fig3, ax3 = plt.subplots(figsize=(12, 5))
+        st.markdown("### 🏦 Monthly Net Flow by Bank")
+        bank_monthly = data.groupby(['month', 'bank'])[amount_col].sum().unstack().fillna(0)
+        fig3, ax3 = plt.subplots(figsize=(12,5))
         bank_monthly.plot(ax=ax3)
-        ax3.set_ylabel('Net Flow')
-        ax3.set_title('Monthly Net Flow by Bank')
+        plt.ylabel('Net Flow')
         st.pyplot(fig3)
 
     with tab3:
-        st.markdown("### \ud83d\udd2e Net Flow Forecast (Next 6 Months)")
-        monthly = data.groupby('month')[amount_col].sum().sort_index()
+        st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
+        monthly = data.groupby('month')[amount_col].sum()
         df_prophet = monthly.reset_index().rename(columns={'month': 'ds', amount_col: 'y'})
-        df_prophet['ds'] = df_prophet['ds'].dt.to_timestamp()
-        df_prophet = df_prophet.sort_values('ds')
-
+        df_prophet['ds'] = df_prophet['ds'].astype(str)
         m = Prophet()
         m.fit(df_prophet)
         future = m.make_future_dataframe(periods=6, freq='M')
@@ -215,7 +216,6 @@ if data is not None and not data.empty:
         fig4 = m.plot(forecast)
         st.pyplot(fig4)
         st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
-
         next_month_pred = forecast['yhat'].iloc[-1]
         if next_month_pred < 0:
             st.warning('Your predicted net flow for next month is negative. Consider reducing discretionary expenses or increasing income sources!')
@@ -223,7 +223,7 @@ if data is not None and not data.empty:
             st.success('Your predicted net flow for next month is positive. Keep up the good financial habits!')
 
     with tab4:
-        st.markdown("### \ud83d\udea8 Anomalous Transactions (Potential Outliers)")
+        st.markdown("### 🚨 Anomalous Transactions (Potential Outliers)")
         iso = IsolationForest(contamination=0.01, random_state=42)
         data['anomaly'] = iso.fit_predict(data[[amount_col]])
         anomalies = data[data['anomaly'] == -1]
@@ -231,32 +231,31 @@ if data is not None and not data.empty:
         st.info(f"**{len(anomalies)} anomalous transactions detected.** Review these for possible errors or fraud.")
 
     with tab5:
-        st.markdown("### \u2b07 Download Data & Forecast")
+        st.markdown("### ⬇ Download Data & Forecast")
         st.download_button("Download Cleaned Data (CSV)", data.to_csv(index=False), "cleaned_data.csv")
         st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
 
-    # --- Recommendations ---
-    st.markdown("## \ud83d\udcdc Recommendations & Insights")
+    st.markdown("## 📝 Recommendations & Insights")
     top_cats = data.groupby('category')[amount_col].sum().sort_values(ascending=False).head(3)
     st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
     top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
     st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
-    savings_rate = 100 * data[data[amount_col]>0][amount_col].sum() / abs(data[amount_col].sum())
+    savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
     if savings_rate < 20:
-        st.warning("\u26a0\ufe0f Your savings rate is below 20%. Consider increasing your savings for better financial health.")
+        st.warning("⚠️ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
-        st.success("\ud83c\udf89 Your savings rate is healthy!")
+        st.success("🎉 Your savings rate is healthy!")
 
-# --- Footer ---
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
     "<div style='text-align:center; color: #888;'>"
-    "Made with \u2764 using Streamlit | "
+    "Made with ❤ using Streamlit | "
     "<a href='https://github.com/Challakruthika/data_bank' target='_blank'>GitHub</a>"
     "</div>",
     unsafe_allow_html=True
 )
-
-
-        
+   
        
+       
+               
+     
