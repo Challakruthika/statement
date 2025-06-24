@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
-from sklearn.linear_model import LinearRegression
 from prophet import Prophet
 
 # --- Custom CSS for a modern look ---
@@ -57,19 +56,21 @@ if data is not None and not data.empty:
     st.success("✅ Data uploaded successfully!")
     with st.expander("🔍 Preview Uploaded Data"):
         st.dataframe(data.head())
+        st.write("**Columns detected:**", list(data.columns))
+
+    # --- User selects date and amount columns ---
+    st.markdown("### 🛠️ Select Columns")
+    date_col = st.selectbox("Select the date column", options=data.columns)
+    amount_col = st.selectbox("Select the amount column", options=data.columns)
+    desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
+    st.write("")
 
     # --- Data Cleaning ---
-    data.columns = [col.lower().strip().replace(' ', '_') for col in data.columns]
-    possible_date_cols = [col for col in data.columns if 'date' in col]
-    possible_amount_cols = [col for col in data.columns if 'amount' in col or 'withdrawal' in col or 'deposit' in col]
-    possible_balance_cols = [col for col in data.columns if 'balance' in col]
-    DATE_COL = possible_date_cols[0] if possible_date_cols else data.columns[0]
-    AMOUNT_COL = possible_amount_cols[0] if possible_amount_cols else data.columns[1]
-    data[DATE_COL] = pd.to_datetime(data[DATE_COL], errors='coerce')
-    data = data.dropna(subset=[DATE_COL])
-    data[AMOUNT_COL] = pd.to_numeric(data[AMOUNT_COL], errors='coerce')
-    data = data.dropna(subset=[AMOUNT_COL])
-    data['month'] = data[DATE_COL].dt.to_period('M')
+    data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
+    data = data.dropna(subset=[date_col])
+    data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
+    data = data.dropna(subset=[amount_col])
+    data['month'] = data[date_col].dt.to_period('M')
 
     # --- Category Analysis ---
     def categorize(desc):
@@ -84,9 +85,8 @@ if data is not None and not data.empty:
         if 'insurance' in desc: return 'Insurance'
         if 'emi' in desc or 'loan' in desc: return 'Loan/EMI'
         return 'Others'
-    desc_col = [col for col in data.columns if 'desc' in col or 'particular' in col or 'narration' in col]
-    if desc_col:
-        data['category'] = data[desc_col[0]].apply(categorize)
+    if desc_col != "None":
+        data['category'] = data[desc_col].apply(categorize)
     else:
         data['category'] = 'Others'
 
@@ -95,17 +95,26 @@ if data is not None and not data.empty:
 
     # --- Summary Stats ---
     st.markdown("## 📈 Summary Statistics")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Records", len(data))
     with col2:
-        st.metric("Total Net Flow", f"{data[AMOUNT_COL].sum():,.2f}")
+        st.metric("Total Net Flow", f"{data[amount_col].sum():,.2f}")
     with col3:
-        st.metric("Avg. Monthly Net Flow", f"{data.groupby('month')[AMOUNT_COL].sum().mean():,.2f}")
+        st.metric("Avg. Monthly Net Flow", f"{data.groupby('month')[amount_col].sum().mean():,.2f}")
+    with col4:
+        st.metric("Savings Rate (%)", f"{100 * data[data[amount_col]>0][amount_col].sum() / abs(data[amount_col].sum()):.2f}")
+
+    # --- Income vs Expense Breakdown ---
+    st.markdown("### 💵 Income vs. Expense Breakdown")
+    income = data[data[amount_col] > 0][amount_col].sum()
+    expense = data[data[amount_col] < 0][amount_col].sum()
+    st.write(f"**Total Income:** {income:,.2f}")
+    st.write(f"**Total Expenses:** {expense:,.2f}")
 
     # --- Monthly Net Flow Chart ---
     st.markdown("### 📅 Monthly Net Flow (Income - Expenses)")
-    monthly = data.groupby('month')[AMOUNT_COL].sum()
+    monthly = data.groupby('month')[amount_col].sum()
     fig, ax = plt.subplots(figsize=(10,4))
     monthly.plot(kind='bar', ax=ax, color='#4F8BF9')
     plt.ylabel('Net Amount')
@@ -113,7 +122,7 @@ if data is not None and not data.empty:
 
     # --- Category Spending Chart ---
     st.markdown("### 🏷️ Monthly Spending by Category")
-    cat_monthly = data.groupby(['month', 'category'])[AMOUNT_COL].sum().unstack().fillna(0)
+    cat_monthly = data.groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
     fig2, ax2 = plt.subplots(figsize=(12,5))
     cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
     plt.ylabel('Amount')
@@ -121,7 +130,7 @@ if data is not None and not data.empty:
 
     # --- Bank-wise Comparison ---
     st.markdown("### 🏦 Monthly Net Flow by Bank")
-    bank_monthly = data.groupby(['month', 'bank'])[AMOUNT_COL].sum().unstack().fillna(0)
+    bank_monthly = data.groupby(['month', 'bank'])[amount_col].sum().unstack().fillna(0)
     fig3, ax3 = plt.subplots(figsize=(12,5))
     bank_monthly.plot(ax=ax3)
     plt.ylabel('Net Flow')
@@ -129,7 +138,7 @@ if data is not None and not data.empty:
 
     # --- Prophet Forecast ---
     st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
-    df_prophet = monthly.reset_index().rename(columns={'month': 'ds', AMOUNT_COL: 'y'})
+    df_prophet = monthly.reset_index().rename(columns={'month': 'ds', amount_col: 'y'})
     df_prophet['ds'] = df_prophet['ds'].astype(str)
     m = Prophet()
     m.fit(df_prophet)
@@ -141,18 +150,18 @@ if data is not None and not data.empty:
 
     # --- Top Expenses/Incomes ---
     with st.expander("💸 Top 5 Largest Expenses"):
-        expenses = data[data[AMOUNT_COL] < 0].nsmallest(5, AMOUNT_COL)
-        st.dataframe(expenses[[DATE_COL, AMOUNT_COL, 'category', 'source_file']])
+        expenses = data[data[amount_col] < 0].nsmallest(5, amount_col)
+        st.dataframe(expenses[[date_col, amount_col, 'category', 'source_file']])
     with st.expander("💰 Top 5 Largest Incomes"):
-        incomes = data[data[AMOUNT_COL] > 0].nlargest(5, AMOUNT_COL)
-        st.dataframe(incomes[[DATE_COL, AMOUNT_COL, 'category', 'source_file']])
+        incomes = data[data[amount_col] > 0].nlargest(5, amount_col)
+        st.dataframe(incomes[[date_col, amount_col, 'category', 'source_file']])
 
     # --- Anomaly Detection ---
     with st.expander("🚨 Anomalous Transactions (Potential Outliers)"):
         iso = IsolationForest(contamination=0.01, random_state=42)
-        data['anomaly'] = iso.fit_predict(data[[AMOUNT_COL]])
+        data['anomaly'] = iso.fit_predict(data[[amount_col]])
         anomalies = data[data['anomaly'] == -1]
-        st.dataframe(anomalies[[DATE_COL, AMOUNT_COL, 'category', 'source_file']].head(10))
+        st.dataframe(anomalies[[date_col, amount_col, 'category', 'source_file']].head(10))
 
     # --- Recommendations ---
     st.markdown("## 📝 Recommendations & Insights")
@@ -168,6 +177,11 @@ if data is not None and not data.empty:
     top_banks = bank_monthly.sum().sort_values(ascending=False).head(1)
     st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
 
+    # --- Downloadable Report ---
+    with st.expander("⬇️ Download Data & Forecast"):
+        st.download_button("Download Cleaned Data (CSV)", data.to_csv(index=False), "cleaned_data.csv")
+        st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
+
 # --- Footer ---
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
@@ -177,6 +191,12 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
+                        
+     
+
+   
+      
+
    
 
    
