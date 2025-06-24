@@ -62,14 +62,30 @@ if data is not None and not data.empty:
     # --- User selects date and amount columns ---
     st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
-    amount_col = st.selectbox("Select the amount column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
-    st.write("")
+
+    # --- Amount logic robustness ---
+    use_separate = st.checkbox("My statement has separate columns for Deposit and Withdrawal")
+    if use_separate:
+        deposit_col = st.selectbox("Select the deposit/credit column", options=data.columns)
+        withdrawal_col = st.selectbox("Select the withdrawal/debit column", options=data.columns)
+        data[deposit_col] = pd.to_numeric(data[deposit_col], errors='coerce').fillna(0)
+        data[withdrawal_col] = pd.to_numeric(data[withdrawal_col], errors='coerce').fillna(0)
+        data['net_amount'] = data[deposit_col] - data[withdrawal_col]
+        amount_col = 'net_amount'
+    else:
+        amount_col = st.selectbox("Select the amount column", options=data.columns)
+        amount_sign = st.radio(
+            "In your selected amount column, what do positive values mean?",
+            ("Income/Credit", "Expense/Debit")
+        )
+        data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
+        if amount_sign == "Expense/Debit":
+            data[amount_col] = -data[amount_col]
 
     # --- Data Cleaning ---
     data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
     data = data.dropna(subset=[date_col])
-    data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
     data = data.dropna(subset=[amount_col])
     data['month'] = data[date_col].dt.to_period('M')
 
@@ -236,8 +252,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
-
-       
-       
-       
-   
