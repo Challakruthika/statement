@@ -96,7 +96,7 @@ if data is not None and not data.empty:
 
     # --- Tabs for navigation ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🏠 Summary", "📊 Trends", "🔮 Predictions", "🚨 Anomalies", "⬇️ Download"
+        "🏠 Summary", "📊 Trends", "🔮 Forecast", "🚨 Anomalies", "⬇️ Download"
     ])
 
     with tab1:
@@ -120,6 +120,10 @@ if data is not None and not data.empty:
         st.markdown("### 🏦 Bank-wise Net Flow")
         bank_total = data.groupby('bank')[amount_col].sum().sort_values(ascending=False)
         st.bar_chart(bank_total)
+        # Insight
+        if not bank_total.empty:
+            top_bank = bank_total.index[0]
+            st.info(f"**Insight:** Your highest net flow is with **{top_bank}** bank.")
 
     with tab2:
         st.markdown("### 📅 Monthly Net Flow (Income - Expenses)")
@@ -128,6 +132,16 @@ if data is not None and not data.empty:
         monthly.plot(kind='bar', ax=ax, color='#4F8BF9')
         plt.ylabel('Net Amount')
         st.pyplot(fig)
+        # Insight
+        if not monthly.empty:
+            best_month = monthly.idxmax()
+            worst_month = monthly.idxmin()
+            st.info(
+                f"**Insights:**\n"
+                f"- Your best month was **{best_month}** with a net flow of **{monthly.max():,.2f}**.\n"
+                f"- Your worst month was **{worst_month}** with a net flow of **{monthly.min():,.2f}**.\n"
+                f"- The average monthly net flow is **{monthly.mean():,.2f}**."
+            )
 
         st.markdown("### 🏷️ Monthly Spending by Category")
         cat_monthly = data.groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
@@ -135,6 +149,14 @@ if data is not None and not data.empty:
         cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
         plt.ylabel('Amount')
         st.pyplot(fig2)
+        # Insight
+        top_cat = data.groupby('category')[amount_col].sum().sort_values(ascending=False).head(1)
+        if not top_cat.empty:
+            st.info(
+                f"**Insights:**\n"
+                f"- Your top spending category is **{top_cat.index[0]}** with a total of **{top_cat.iloc[0]:,.2f}**.\n"
+                f"- Consider reviewing this category for potential savings."
+            )
 
         st.markdown("### 🏦 Monthly Net Flow by Bank")
         bank_monthly = data.groupby(['month', 'bank'])[amount_col].sum().unstack().fillna(0)
@@ -155,7 +177,7 @@ if data is not None and not data.empty:
         fig4 = m.plot(forecast)
         st.pyplot(fig4)
         st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
-
+        # Insight
         next_month_pred = forecast['yhat'].iloc[-1]
         if next_month_pred < 0:
             st.warning('Your predicted net flow for next month is negative. Consider reducing discretionary expenses or increasing income sources!')
@@ -168,6 +190,8 @@ if data is not None and not data.empty:
         data['anomaly'] = iso.fit_predict(data[[amount_col]])
         anomalies = data[data['anomaly'] == -1]
         st.dataframe(anomalies[[date_col, amount_col, 'category', 'source_file']].head(10))
+        # Insight
+        st.info(f"**{len(anomalies)} anomalous transactions detected.** Review these for possible errors or fraud.")
 
     with tab5:
         st.markdown("### ⬇️ Download Data & Forecast")
@@ -190,5 +214,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
-   
-    
