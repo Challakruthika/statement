@@ -1,8 +1,6 @@
-import os
-import glob
+import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
 from sklearn.linear_model import LinearRegression
@@ -11,27 +9,29 @@ from prophet import Prophet
 st.set_page_config(page_title="Financial Insights Dashboard", layout="wide")
 st.title("📊 Financial Insights & AI Predictions")
 
-# 1. Load Data
-def load_data():
-    all_files = glob.glob(os.path.join(os.getcwd(), '*.csv'))
+# File uploader for CSVs
+uploaded_files = st.file_uploader(
+    "Upload one or more bank statement CSV files",
+    type="csv",
+    accept_multiple_files=True
+)
+
+data = None
+if uploaded_files:
     dfs = []
-    for filename in all_files:
+    for file in uploaded_files:
         try:
-            df = pd.read_csv(filename)
-            df['source_file'] = os.path.basename(filename)
+            df = pd.read_csv(file)
+            df['source_file'] = file.name
             dfs.append(df)
         except Exception as e:
-            st.warning(f"Error reading {filename}: {e}")
+            st.warning(f"Error reading {file.name}: {e}")
     if dfs:
         data = pd.concat(dfs, ignore_index=True)
-        return data
-    else:
-        st.error("No CSV files found in the directory.")
-        return pd.DataFrame()
+else:
+    st.warning("Please upload one or more CSV files to begin.")
 
-data = load_data()
-
-if not data.empty:
+if data is not None and not data.empty:
     # 2. Data Cleaning
     data.columns = [col.lower().strip().replace(' ', '_') for col in data.columns]
     possible_date_cols = [col for col in data.columns if 'date' in col]
