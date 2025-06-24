@@ -57,10 +57,10 @@ if data is not None and not data.empty:
     st.success("✅ Data uploaded successfully!")
     with st.expander("🔍 Preview Uploaded Data"):
         st.dataframe(data.head())
-        st.write("**Columns detected:**", list(data.columns))
+        st.write("*Columns detected:*", list(data.columns))
 
     # --- User selects date and amount columns ---
-    st.markdown("### 🛠️ Select Columns")
+    st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
     amount_col = st.selectbox("Select the amount column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
@@ -96,7 +96,7 @@ if data is not None and not data.empty:
 
     # --- Tabs for navigation ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🏠 Summary", "📊 Trends", "🔮 Forecast", "🚨 Anomalies", "⬇️ Download"
+        "🏠 Summary", "📊 Trends", "🔮 Predictions", "🚨 Anomalies", "⬇ Download"
     ])
 
     with tab1:
@@ -114,13 +114,28 @@ if data is not None and not data.empty:
         st.markdown("### 💵 Income vs. Expense Breakdown")
         income = data[data[amount_col] > 0][amount_col].sum()
         expense = data[data[amount_col] < 0][amount_col].sum()
-        st.success(f"**Total Income:** {income:,.2f}")
-        st.error(f"**Total Expenses:** {expense:,.2f}")
+        st.success(f"*Total Income:* {income:,.2f}")
+        st.error(f"*Total Expenses:* {expense:,.2f}")
+
+        # --- Expense Breakdown Pie Chart ---
+        st.markdown("### 🥧 Expense Breakdown by Category")
+        expense_cats = data[data[amount_col] < 0].groupby('category')[amount_col].sum().abs()
+        if not expense_cats.empty:
+            fig_pie, ax_pie = plt.subplots()
+            expense_cats.plot.pie(autopct='%1.1f%%', ax=ax_pie, colormap='tab20')
+            plt.ylabel('')
+            st.pyplot(fig_pie)
+            top3 = expense_cats.sort_values(ascending=False).head(3)
+            st.info(
+                f"**Top 3 Expense Categories:**\n"
+                + "\n".join([f"- {cat}: {amt:,.2f}" for cat, amt in top3.items()])
+            )
+        else:
+            st.info("No expenses found for pie chart.")
 
         st.markdown("### 🏦 Bank-wise Net Flow")
         bank_total = data.groupby('bank')[amount_col].sum().sort_values(ascending=False)
         st.bar_chart(bank_total)
-        # Insight
         if not bank_total.empty:
             top_bank = bank_total.index[0]
             st.info(f"**Insight:** Your highest net flow is with **{top_bank}** bank.")
@@ -134,16 +149,18 @@ if data is not None and not data.empty:
         st.pyplot(fig)
         # Insight
         if not monthly.empty:
+            trend = "increasing" if monthly.diff().mean() > 0 else "decreasing"
             best_month = monthly.idxmax()
             worst_month = monthly.idxmin()
             st.info(
-                f"**Insights:**\n"
-                f"- Your best month was **{best_month}** with a net flow of **{monthly.max():,.2f}**.\n"
-                f"- Your worst month was **{worst_month}** with a net flow of **{monthly.min():,.2f}**.\n"
-                f"- The average monthly net flow is **{monthly.mean():,.2f}**."
+                f"**Trend:** Your monthly net flow is {trend} over time.\n"
+                f"**Best Month:** {best_month} ({monthly.max():,.2f})\n"
+                f"**Worst Month:** {worst_month} ({monthly.min():,.2f})"
             )
+            if (monthly < 0).any():
+                st.warning("⚠️ You had negative net flow in some months. Consider reviewing your expenses for those periods.")
 
-        st.markdown("### 🏷️ Monthly Spending by Category")
+        st.markdown("### 🏷 Monthly Spending by Category")
         cat_monthly = data.groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
         fig2, ax2 = plt.subplots(figsize=(12,5))
         cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
@@ -190,11 +207,10 @@ if data is not None and not data.empty:
         data['anomaly'] = iso.fit_predict(data[[amount_col]])
         anomalies = data[data['anomaly'] == -1]
         st.dataframe(anomalies[[date_col, amount_col, 'category', 'source_file']].head(10))
-        # Insight
         st.info(f"**{len(anomalies)} anomalous transactions detected.** Review these for possible errors or fraud.")
 
     with tab5:
-        st.markdown("### ⬇️ Download Data & Forecast")
+        st.markdown("### ⬇ Download Data & Forecast")
         st.download_button("Download Cleaned Data (CSV)", data.to_csv(index=False), "cleaned_data.csv")
         st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
 
@@ -204,13 +220,24 @@ if data is not None and not data.empty:
     st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
     top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
     st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
+    # Savings rate insight
+    savings_rate = 100 * data[data[amount_col]>0][amount_col].sum() / abs(data[amount_col].sum())
+    if savings_rate < 20:
+        st.warning("⚠️ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
+    else:
+        st.success("🎉 Your savings rate is healthy!")
 
 # --- Footer ---
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
     "<div style='text-align:center; color: #888;'>"
-    "Made with ❤️ using Streamlit | "
+    "Made with ❤ using Streamlit | "
     "<a href='https://github.com/Challakruthika/data_bank' target='_blank'>GitHub</a>"
     "</div>",
     unsafe_allow_html=True
 )
+
+       
+       
+       
+   
