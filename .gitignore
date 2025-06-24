@@ -1,0 +1,7 @@
+*.csv
+financial_insights_summary.xlsx
+monthly_net_flow.png
+__pycache__/
+.env
+.ipynb_checkpoints/
+.DS_Store 
