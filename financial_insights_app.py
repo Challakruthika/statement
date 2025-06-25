@@ -20,7 +20,7 @@ Upload your bank statement CSV (SBI, ICICI, PNB, APGB, etc.). The app will auto-
 # --- Helper Functions ---
 def get_table_download_link(df, filename="data.csv"):
     csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
+    b64 = base64.b64encode(csv.encode()).decode()
     return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV</a>'
 
 def detect_date_column(df):
@@ -36,7 +36,6 @@ def detect_amount_column(df):
     candidates = [c for c in df.columns if 'amount' in c.lower()]
     if candidates:
         return candidates[0]
-    # fallback: first numeric column
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
             return col
@@ -77,6 +76,22 @@ def classify_desc(desc):
         return 'Debit'
     return 'Unknown'
 
+def classify_type(type_val):
+    """Enhanced function to classify Type column values"""
+    type_str = str(type_val).lower().strip()
+    
+    # Credit indicators
+    credit_indicators = ['credit', 'cr', 'in', 'credit/', '/credit', 'c', 'credit transaction', 'inward']
+    # Debit indicators  
+    debit_indicators = ['debit', 'dr', 'out', 'debit/', '/debit', 'd', 'debit transaction', 'outward']
+    
+    if any(indicator in type_str for indicator in credit_indicators):
+        return 'Credit'
+    elif any(indicator in type_str for indicator in debit_indicators):
+        return 'Debit'
+    else:
+        return 'Unknown'
+
 # --- Main App ---
 uploaded_file = st.file_uploader("Upload your bank statement CSV", type=["csv"])
 if uploaded_file:
@@ -112,11 +127,17 @@ if uploaded_file:
     elif amount_col:
         amt = pd.to_numeric(df[amount_col], errors='coerce').fillna(0)
         if type_col:
-            type_vals = df[type_col].astype(str).str.lower()
-            credit_mask = type_vals.str.contains('cr|credit')
-            debit_mask = type_vals.str.contains('dr|debit')
-            data['Credit'] = np.where(credit_mask, amt, 0)
-            data['Debit'] = np.where(debit_mask, amt, 0)
+            # Enhanced Type column classification
+            mapped_type = df[type_col].apply(classify_type)
+            
+            # Debug info
+            st.write("#### Type Column Analysis")
+            st.write(f"Unique Type values found: {df[type_col].unique()}")
+            st.write(f"Classification results: {mapped_type.value_counts()}")
+            
+            data['Credit'] = np.where(mapped_type == 'Credit', amt, 0)
+            data['Debit'] = np.where(mapped_type == 'Debit', amt, 0)
+            data['Unknown'] = np.where(mapped_type == 'Unknown', amt, 0)
         elif desc_col:
             # Keyword-based mapping
             mapped_type = df[desc_col].apply(classify_desc)
@@ -158,10 +179,12 @@ if uploaded_file:
 
     # --- Expense Breakdown ---
     st.write("#### Expense Breakdown by Description (Top 10)")
-    if 'Description' in data:
+    if 'Description' in data and data['Debit'].sum() > 0:
         exp_by_desc = data.groupby('Description')['Debit'].sum().sort_values(ascending=False).head(10)
         fig1 = px.pie(values=exp_by_desc.values, names=exp_by_desc.index, title='Top 10 Expense Categories')
         st.plotly_chart(fig1, use_container_width=True)
+    else:
+        st.info("No expenses found to display breakdown.")
 
     # --- Monthly Trends ---
     st.write("#### Monthly Income & Expense Trends")
@@ -210,7 +233,10 @@ if uploaded_file:
     st.markdown(get_table_download_link(data, filename="processed_bank_statement.csv"), unsafe_allow_html=True)
 
     st.caption("Made with ❤️ for Indian bank statements. Handles SBI, ICICI, PNB, APGB, and more!")
-       
+
+   
+     
+    
            
        
      
