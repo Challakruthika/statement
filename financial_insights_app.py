@@ -1,15 +1,18 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import seaborn as sns
+from io import BytesIO
 from prophet import Prophet
 from prophet.plot import plot_plotly
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
 import base64
-from io import BytesIO
 
 st.set_page_config(page_title="Universal Indian Bank Statement Analyzer", layout="wide")
-st.title("🇮🇳 Universal Indian Bank Statement Analyzer")
+st.title("��🇳 Universal Indian Bank Statement Analyzer")
 st.markdown("""
 Upload your bank statement CSV (SBI, ICICI, PNB, APGB, etc.). The app will auto-detect columns and guide you to map them. Handles Amount, Deposit/Withdrawal, Type (Dr/Cr), and Description-only formats. Get robust insights, trends, forecasts, and actionable tips!
 """)
@@ -17,7 +20,7 @@ Upload your bank statement CSV (SBI, ICICI, PNB, APGB, etc.). The app will auto-
 # --- Helper Functions ---
 def get_table_download_link(df, filename="data.csv"):
     csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
+    b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
     return f'<a href="data:file/csv;base64,{b64}" download="{filename}">Download CSV</a>'
 
 def detect_date_column(df):
@@ -33,6 +36,7 @@ def detect_amount_column(df):
     candidates = [c for c in df.columns if 'amount' in c.lower()]
     if candidates:
         return candidates[0]
+    # fallback: first numeric column
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
             return col
@@ -61,11 +65,9 @@ def detect_deposit_withdrawal_columns(df):
 
 # --- Keyword-based mapping for Description-only CSVs ---
 CREDIT_KEYWORDS = [
-    'salary', 'credited', 'deposit', 'neft in', 'upi in', 'imps in', 'refund', 'reversal', 'interest', 'dividend', 'cashback', 'reward', 'pension', 'inward', 'receiv', 'loan disb', 'bonus', 'recd', 'transfer in', 'rtgs in', 'credit', 'cr', 'income', 'paytm add', 'gpay add', 'phonepe add', 'recd', 'recd.'
-]
+    'salary', 'credited', 'deposit', 'neft in', 'upi in', 'imps in', 'refund', 'reversal', 'interest', 'dividend', 'cashback', 'reward', 'pension', 'inward', 'receiv', 'loan disb', 'bonus', 'recd', 'transfer in', 'rtgs in', 'credit', 'cr', 'income', 'paytm add', 'gpay add', 'phonepe add', 'recd', 'recd.']
 DEBIT_KEYWORDS = [
-    'debited', 'withdrawal', 'atm', 'pos', 'payment', 'emi', 'bill', 'neft out', 'upi out', 'imps out', 'purchase', 'charge', 'fee', 'tax', 'insurance', 'sip', 'ecs', 'mandate', 'transfer out', 'rtgs out', 'debit', 'dr', 'spent', 'paytm pay', 'gpay pay', 'phonepe pay', 'sent', 'sent.'
-]
+    'debited', 'withdrawal', 'atm', 'pos', 'payment', 'emi', 'bill', 'neft out', 'upi out', 'imps out', 'purchase', 'charge', 'fee', 'tax', 'insurance', 'sip', 'ecs', 'mandate', 'transfer out', 'rtgs out', 'debit', 'dr', 'spent', 'paytm pay', 'gpay pay', 'phonepe pay', 'sent', 'sent.']
 
 def classify_desc(desc):
     desc = str(desc).lower()
@@ -116,11 +118,13 @@ if uploaded_file:
             data['Credit'] = np.where(credit_mask, amt, 0)
             data['Debit'] = np.where(debit_mask, amt, 0)
         elif desc_col:
+            # Keyword-based mapping
             mapped_type = df[desc_col].apply(classify_desc)
             data['Credit'] = np.where(mapped_type == 'Credit', amt, 0)
             data['Debit'] = np.where(mapped_type == 'Debit', amt, 0)
             data['Unknown'] = np.where(mapped_type == 'Unknown', amt, 0)
         else:
+            # Fallback: positive = credit, negative = debit
             data['Credit'] = np.where(amt > 0, amt, 0)
             data['Debit'] = np.where(amt < 0, -amt, 0)
     else:
@@ -206,7 +210,6 @@ if uploaded_file:
     st.markdown(get_table_download_link(data, filename="processed_bank_statement.csv"), unsafe_allow_html=True)
 
     st.caption("Made with ❤️ for Indian bank statements. Handles SBI, ICICI, PNB, APGB, and more!")
-
        
            
        
