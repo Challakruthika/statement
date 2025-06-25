@@ -57,31 +57,43 @@ if data is not None and not data.empty:
 
     st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
-    amount_col = st.selectbox("Select the amount column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
-    type_col = st.selectbox("Select the type column (optional, e.g., Dr/Cr, Debit/Credit, Transaction Type)", options=["None"] + list(data.columns))
 
-    # --- Data Cleaning ---
+    # --- Universal Net Amount Logic ---
+    use_separate = st.checkbox("My statement has separate columns for Deposit and Withdrawal")
+    if use_separate:
+        deposit_col = st.selectbox("Select the deposit/credit column", options=data.columns)
+        withdrawal_col = st.selectbox("Select the withdrawal/debit column", options=data.columns)
+        data[deposit_col] = pd.to_numeric(data[deposit_col], errors='coerce').fillna(0)
+        data[withdrawal_col] = pd.to_numeric(data[withdrawal_col], errors='coerce').fillna(0)
+        data['net_amount'] = data[deposit_col] - data[withdrawal_col]
+        net_col = 'net_amount'
+    else:
+        amount_col = st.selectbox("Select the amount column", options=data.columns)
+        type_col = st.selectbox("Select the type column (optional, e.g., Dr/Cr, Debit/Credit, Transaction Type)", options=["None"] + list(data.columns))
+        data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
+        if type_col != "None":
+            unique_types = data[type_col].dropna().unique().tolist()
+            st.markdown("#### Map transaction types to Income (Credit) and Expense (Debit)")
+            credit_types = st.multiselect("Select values that mean Credit/Income", unique_types, default=[t for t in unique_types if str(t).lower().startswith('cr') or str(t).lower().startswith('credit')])
+            debit_types = st.multiselect("Select values that mean Debit/Expense", unique_types, default=[t for t in unique_types if str(t).lower().startswith('dr') or str(t).lower().startswith('debit')])
+            data['net_amount'] = np.where(data[type_col].isin(credit_types), data[amount_col],
+                                         np.where(data[type_col].isin(debit_types), -data[amount_col], np.nan))
+            data = data.dropna(subset=['net_amount'])
+            net_col = 'net_amount'
+        else:
+            amount_sign = st.radio(
+                "In your selected amount column, what do positive values mean?",
+                ("Income/Credit", "Expense/Debit")
+            )
+            if amount_sign == "Expense/Debit":
+                data[amount_col] = -data[amount_col]
+            net_col = amount_col
+
     data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
-    data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
-    data = data.dropna(subset=[date_col, amount_col])
+    data = data.dropna(subset=[date_col, net_col])
     data['month'] = data[date_col].dt.to_period('M')
 
-    # --- Type-based logic for income/expense ---
-    if type_col != "None":
-        unique_types = data[type_col].dropna().unique().tolist()
-        st.markdown("#### Map transaction types to Income (Credit) and Expense (Debit)")
-        credit_types = st.multiselect("Select values that mean Credit/Income", unique_types, default=[t for t in unique_types if str(t).lower().startswith('cr') or str(t).lower().startswith('credit')])
-        debit_types = st.multiselect("Select values that mean Debit/Expense", unique_types, default=[t for t in unique_types if str(t).lower().startswith('dr') or str(t).lower().startswith('debit')])
-        # Create a signed amount column
-        data['signed_amount'] = np.where(data[type_col].isin(credit_types), data[amount_col],
-                                         np.where(data[type_col].isin(debit_types), -data[amount_col], np.nan))
-        data = data.dropna(subset=['signed_amount'])
-        used_amount_col = 'signed_amount'
-    else:
-        used_amount_col = amount_col
-
-    # --- Category Analysis ---
     def categorize(desc):
         desc = str(desc).lower()
         if 'salary' in desc or 'credit' in desc or 'neft' in desc: return 'Salary/Income'
@@ -101,9 +113,8 @@ if data is not None and not data.empty:
 
     data['bank'] = data['source_file'].str.extract(r'(apgb|icici|pnb|sbi)', expand=False).str.upper().fillna('OTHER')
 
-    # --- Income/Expense/Net Flow Calculation ---
-    total_income = data[data[used_amount_col] > 0][used_amount_col].sum()
-    total_expense = -data[data[used_amount_col] < 0][used_amount_col].sum()
+    total_income = data[data[net_col] > 0][net_col].sum()
+    total_expense = -data[data[net_col] < 0][net_col].sum()
     savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -116,9 +127,9 @@ if data is not None and not data.empty:
         with col1:
             st.metric("Total Records", len(data))
         with col2:
-            st.metric("Total Net Flow", f"{data[used_amount_col].sum():,.2f}")
+            st.metric("Total Net Flow", f"{data[net_col].sum():,.2f}")
         with col3:
-            st.metric("Avg. Monthly Net Flow", f"{data.groupby('month')[used_amount_col].sum().mean():,.2f}")
+            st.metric("Avg. Monthly Net Flow", f"{data.groupby('month')[net_col].sum().mean():,.2f}")
         with col4:
             st.metric("Savings Rate (%)", f"{savings_rate:.2f}")
 
@@ -127,7 +138,7 @@ if data is not None and not data.empty:
         st.error(f"*Total Expenses:* {total_expense:,.2f}")
 
         st.markdown("### 🥧 Expense Breakdown by Category")
-        expense_cats = data[data[used_amount_col] < 0].groupby('category')[used_amount_col].sum().abs()
+        expense_cats = data[data[net_col] < 0].groupby('category')[net_col].sum().abs()
         if not expense_cats.empty:
             fig_pie, ax_pie = plt.subplots()
             expense_cats.plot.pie(autopct='%1.1f%%', ax=ax_pie, colormap='tab20')
@@ -142,7 +153,7 @@ if data is not None and not data.empty:
             st.info("No expenses found for pie chart.")
 
         st.markdown("### 🏦 Bank-wise Net Flow")
-        bank_total = data.groupby('bank')[used_amount_col].sum().sort_values(ascending=False)
+        bank_total = data.groupby('bank')[net_col].sum().sort_values(ascending=False)
         st.bar_chart(bank_total)
         if not bank_total.empty:
             top_bank = bank_total.index[0]
@@ -150,7 +161,7 @@ if data is not None and not data.empty:
 
     with tab2:
         st.markdown("### 📅 Monthly Net Flow (Income - Expenses)")
-        monthly = data.groupby('month')[used_amount_col].sum()
+        monthly = data.groupby('month')[net_col].sum()
         fig, ax = plt.subplots(figsize=(10,4))
         monthly.plot(kind='bar', ax=ax, color='#4F8BF9')
         plt.ylabel('Net Amount')
@@ -168,12 +179,12 @@ if data is not None and not data.empty:
                 st.warning("⚠️ You had negative net flow in some months. Consider reviewing your expenses for those periods.")
 
         st.markdown("### 🏷 Monthly Spending by Category")
-        cat_monthly = data.groupby(['month', 'category'])[used_amount_col].sum().unstack().fillna(0)
+        cat_monthly = data.groupby(['month', 'category'])[net_col].sum().unstack().fillna(0)
         fig2, ax2 = plt.subplots(figsize=(12,5))
         cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
         plt.ylabel('Amount')
         st.pyplot(fig2)
-        top_cat = data.groupby('category')[used_amount_col].sum().sort_values(ascending=False).head(1)
+        top_cat = data.groupby('category')[net_col].sum().sort_values(ascending=False).head(1)
         if not top_cat.empty:
             st.info(
                 f"**Insights:**\n"
@@ -182,7 +193,7 @@ if data is not None and not data.empty:
             )
 
         st.markdown("### 🏦 Monthly Net Flow by Bank")
-        bank_monthly = data.groupby(['month', 'bank'])[used_amount_col].sum().unstack().fillna(0)
+        bank_monthly = data.groupby(['month', 'bank'])[net_col].sum().unstack().fillna(0)
         fig3, ax3 = plt.subplots(figsize=(12,5))
         bank_monthly.plot(ax=ax3)
         plt.ylabel('Net Flow')
@@ -190,14 +201,13 @@ if data is not None and not data.empty:
 
     with tab3:
         st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
-        monthly = data.groupby('month')[used_amount_col].sum()
-        df_prophet = monthly.reset_index().rename(columns={'month': 'ds', used_amount_col: 'y'})
+        monthly = data.groupby('month')[net_col].sum()
+        df_prophet = monthly.reset_index().rename(columns={'month': 'ds', net_col: 'y'})
         df_prophet['ds'] = df_prophet['ds'].astype(str)
         m = Prophet()
         m.fit(df_prophet)
         future = m.make_future_dataframe(periods=6, freq='M')
         forecast = m.predict(future)
-        # Plot historical + forecast
         fig, ax = plt.subplots(figsize=(10,5))
         ax.plot(df_prophet['ds'], df_prophet['y'], label='Historical Net Flow', marker='o')
         ax.plot(forecast['ds'], forecast['yhat'], label='Forecast', linestyle='--', marker='o')
@@ -206,11 +216,9 @@ if data is not None and not data.empty:
         plt.ylabel('Net Flow')
         plt.legend()
         st.pyplot(fig)
-        # Table of next 6 months
         pred_table = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6)
         pred_table = pred_table.rename(columns={'ds': 'Month', 'yhat': 'Predicted Net Flow', 'yhat_lower': 'Lower Bound', 'yhat_upper': 'Upper Bound'})
         st.dataframe(pred_table)
-        # Plain language summary
         negatives = pred_table[pred_table['Predicted Net Flow'] < 0]
         if not negatives.empty:
             st.warning(f"⚠️ The following months are predicted to have negative net flow: {', '.join(negatives['Month'])}. Consider planning ahead for these periods.")
@@ -222,9 +230,9 @@ if data is not None and not data.empty:
     with tab4:
         st.markdown("### 🚨 Anomalous Transactions (Potential Outliers)")
         iso = IsolationForest(contamination=0.01, random_state=42)
-        data['anomaly'] = iso.fit_predict(data[[used_amount_col]])
+        data['anomaly'] = iso.fit_predict(data[[net_col]])
         anomalies = data[data['anomaly'] == -1]
-        st.dataframe(anomalies[[date_col, used_amount_col, 'category', 'source_file']].head(10))
+        st.dataframe(anomalies[[date_col, net_col, 'category', 'source_file']].head(10))
         st.info(f"**{len(anomalies)} anomalous transactions detected.** Review these for possible errors or fraud.")
 
     with tab5:
@@ -233,9 +241,9 @@ if data is not None and not data.empty:
         st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
 
     st.markdown("## 📝 Recommendations & Insights")
-    top_cats = data.groupby('category')[used_amount_col].sum().sort_values(ascending=False).head(3)
+    top_cats = data.groupby('category')[net_col].sum().sort_values(ascending=False).head(3)
     st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
-    top_banks = data.groupby('bank')[used_amount_col].sum().sort_values(ascending=False).head(1)
+    top_banks = data.groupby('bank')[net_col].sum().sort_values(ascending=False).head(1)
     st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
     if savings_rate < 20:
         st.warning("⚠️ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
@@ -251,14 +259,5 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-      
-      
-       
-       
-        
-      
-   
-       
-       
-               
-     
+
+    
