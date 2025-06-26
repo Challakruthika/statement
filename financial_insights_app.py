@@ -168,6 +168,17 @@ if uploaded_file:
     data = data.sort_values('Date').reset_index(drop=True)
     data = data.dropna(subset=['Date'])
 
+    # --- Apply the new categorization ---
+    data['category'] = data.apply(lambda row: categorize(row['Description'], row['Credit'], row['Debit']), axis=1)
+
+    # Set Debit to 0 for all rows where category is 'Salary/Income' or 'Other Income'
+    data.loc[data['category'].isin(['Salary/Income', 'Other Income']), 'Debit'] = 0
+
+    # Debug: Show all rows where category is 'Salary/Income' and Debit > 0
+    salary_expense_rows = data[(data['category'] == 'Salary/Income') & (data['Debit'] > 0)]
+    st.write("DEBUG: Salary/Income rows with Debit > 0 (should be empty):")
+    st.write(salary_expense_rows)
+
     # --- Metrics ---
     total_income = data['Credit'].sum()
     total_expense = data['Debit'].sum()
@@ -275,7 +286,12 @@ if uploaded_file:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!") 
-    
   
-    
+      
+   
+         
+   
+
+  
+
    
