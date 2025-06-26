@@ -59,8 +59,10 @@ if data is not None and not data.empty:
     st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
+    type_col = st.selectbox("Select the type column (Credit/Debit/Dr/Cr, optional)", options=["None"] + list(data.columns))
 
     use_separate = st.checkbox("My statement has separate columns for Deposit and Withdrawal")
+
     if use_separate:
         deposit_col = st.selectbox("Select the deposit/credit column", options=data.columns)
         withdrawal_col = st.selectbox("Select the withdrawal/debit column", options=data.columns)
@@ -68,26 +70,29 @@ if data is not None and not data.empty:
         data[withdrawal_col] = pd.to_numeric(data[withdrawal_col], errors='coerce').fillna(0)
         data['net_amount'] = data[deposit_col] - data[withdrawal_col]
         amount_col = 'net_amount'
+    elif type_col != "None":
+        amount_col = st.selectbox("Select the amount column", options=data.columns)
+        data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
+        type_map = {'DR': -1, 'DEBIT': -1, 'D': -1, 'CR': 1, 'CREDIT': 1, 'C': 1}
+        data[type_col] = data[type_col].astype(str).str.upper().str.strip()
+        data['net_amount'] = data[amount_col] * data[type_col].map(type_map).fillna(0)
+        amount_col = 'net_amount'
     else:
         amount_col = st.selectbox("Select the amount column", options=data.columns)
-        type_col = st.selectbox("Select the transaction type column (DR/CR)", options=data.columns)
-
-        data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
-        data[type_col] = data[type_col].astype(str).str.upper().str.strip()
-
-        # Convert amount based on DR/CR
-        data['signed_amount'] = data.apply(
-            lambda row: -row[amount_col] if row[type_col] == 'DR' else row[amount_col],
-            axis=1
+        amount_sign = st.radio(
+            "In your selected amount column, what do positive values mean?",
+            ("Income/Credit", "Expense/Debit")
         )
-        amount_col = 'signed_amount'
+        data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
+        if amount_sign == "Expense/Debit":
+            data[amount_col] = -data[amount_col]
 
     data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
     data = data.dropna(subset=[date_col])
     data = data.dropna(subset=[amount_col])
     data['month'] = data[date_col].dt.to_period('M')
 
-    # --- Improved Categorization ---
+    # --- Categorization ---
     def categorize(desc, amt):
         desc = str(desc).lower()
         if amt > 0:
@@ -237,7 +242,7 @@ if data is not None and not data.empty:
         data['anomaly'] = iso.fit_predict(data[[amount_col]])
         anomalies = data[data['anomaly'] == -1]
         st.dataframe(anomalies[[date_col, amount_col, 'category', 'source_file']].head(10))
-        st.info(f"{len(anomalies)} anomalous transactions detected.** Review these for possible errors or fraud.")
+        st.info(f"{len(anomalies)} anomalous transactions detected. Review these for possible errors or fraud.")
 
     with tab5:
         st.markdown("### ⬇ Download Data & Forecast")
@@ -249,7 +254,6 @@ if data is not None and not data.empty:
     st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
     top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
     st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
-    savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
     if savings_rate < 20:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
@@ -263,8 +267,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
-
-
-
-  
-  
