@@ -178,6 +178,17 @@ if data is not None and not data.empty:
             top_bank = bank_total.index[0]
             st.info(f"Insight: Your highest net flow is with {top_bank} bank.")
 
+        # Recommendations & Insights ONLY in tab1
+        st.markdown("## 📝 Recommendations & Insights")
+        top_cats = expense_cats.head(3)
+        st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
+        top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
+        st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
+        if savings_rate < 20:
+            st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
+        else:
+            st.success("🎉 Your savings rate is healthy!")
+
     with tab2:
         st.markdown("### 📅 Monthly Net Flow (Income - Expenses)")
         monthly = data.groupby('month')[amount_col].sum()
@@ -217,6 +228,13 @@ if data is not None and not data.empty:
         bank_monthly.plot(ax=ax3)
         plt.ylabel('Net Flow')
         st.pyplot(fig3)
+
+        # Additional Insights for Trends Tab
+        st.markdown("## 📊 Trends Insights")
+        st.info(f"Your net flow trend is {'increasing' if trend == 'increasing' else 'decreasing'}.")
+        st.info(f"Best month: {best_month} ({monthly.max():,.2f}), Worst month: {worst_month} ({monthly.min():,.2f})")
+        if not top_cat.empty:
+            st.info(f"Top spending category: {top_cat.index[0]} ({top_cat.iloc[0]:,.2f})")
 
     with tab3:
         st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
@@ -310,20 +328,18 @@ if data is not None and not data.empty:
         st.dataframe(anomalies[[date_col, amount_col, 'category', 'source_file']].head(10))
         st.info(f"{len(anomalies)} anomalous transactions detected. Review these for possible errors or fraud.")
 
+        # Additional Insights for Anomalies Tab
+        st.markdown("## 🧐 Anomaly Insights")
+        if len(anomalies) > 0:
+            st.warning(f"{len(anomalies)} anomalies found. Review these transactions for possible errors, fraud, or unusual activity.")
+            st.info("Tip: Large or unexpected transactions are often flagged as anomalies. Double-check these with your bank if unsure.")
+        else:
+            st.success("No significant anomalies detected in your transactions.")
+
     with tab5:
         st.markdown("### ⬇ Download Data & Forecast")
         st.download_button("Download Cleaned Data (CSV)", data.to_csv(index=False), "cleaned_data.csv")
         st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
-
-    st.markdown("## 📝 Recommendations & Insights")
-    top_cats = expense_cats.head(3)
-    st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
-    top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
-    st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
-    if savings_rate < 20:
-        st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
-    else:
-        st.success("🎉 Your savings rate is healthy!")
 
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
@@ -333,5 +349,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
- 
- 
