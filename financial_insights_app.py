@@ -60,9 +60,6 @@ if data is not None and not data.empty:
     date_col = st.selectbox("Select the date column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
 
-    # --- NEW: Type column selection for Credit/Debit logic ---
-    type_col = st.selectbox("Select the type column (Credit/Debit/Dr/Cr, optional)", options=["None"] + list(data.columns))
-
     use_separate = st.checkbox("My statement has separate columns for Deposit and Withdrawal")
     if use_separate:
         deposit_col = st.selectbox("Select the deposit/credit column", options=data.columns)
@@ -73,52 +70,28 @@ if data is not None and not data.empty:
         amount_col = 'net_amount'
     else:
         amount_col = st.selectbox("Select the amount column", options=data.columns)
-        amount_sign = st.radio(
-            "In your selected amount column, what do positive values mean?",
-            ("Income/Credit", "Expense/Debit")
-        )
+        type_col = st.selectbox("Select the transaction type column (DR/CR)", options=data.columns)
+
         data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
-        if amount_sign == "Expense/Debit":
-            data[amount_col] = -data[amount_col]
+        data[type_col] = data[type_col].astype(str).str.upper().str.strip()
+
+        # Convert amount based on DR/CR
+        data['signed_amount'] = data.apply(
+            lambda row: -row[amount_col] if row[type_col] == 'DR' else row[amount_col],
+            axis=1
+        )
+        amount_col = 'signed_amount'
 
     data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
     data = data.dropna(subset=[date_col])
     data = data.dropna(subset=[amount_col])
     data['month'] = data[date_col].dt.to_period('M')
 
-    # --- Improved Categorization & Income/Expense Logic ---
-    def categorize(desc, typ, amt):
+    # --- Improved Categorization ---
+    def categorize(desc, amt):
         desc = str(desc).lower()
-        # Use type column if present
-        if typ is not None and typ != "None":
-            typ_val = str(typ).lower()
-            if 'credit' in typ_val or typ_val == 'cr':
-                if 'salary' in desc or 'income' in desc:
-                    return 'Salary/Income'
-                return 'Other Income'
-            elif 'debit' in typ_val or typ_val == 'dr':
-                if 'grocery' in desc or 'supermarket' in desc or 'mart' in desc:
-                    return 'Groceries'
-                if 'electric' in desc or 'water' in desc or 'gas' in desc or 'utility' in desc:
-                    return 'Utilities'
-                if 'rent' in desc or 'lease' in desc:
-                    return 'Rent'
-                if 'atm' in desc or 'cash' in desc:
-                    return 'Cash Withdrawal'
-                if 'restaurant' in desc or 'food' in desc or 'cafe' in desc:
-                    return 'Food & Dining'
-                if 'travel' in desc or 'uber' in desc or 'ola' in desc or 'flight' in desc:
-                    return 'Travel'
-                if 'insurance' in desc:
-                    return 'Insurance'
-                if 'emi' in desc or 'loan' in desc:
-                    return 'Loan/EMI'
-                return 'Others'
-            else:
-                return 'Others'
-        # Fallback: sign-based
         if amt > 0:
-            if 'salary' in desc or 'income' in desc:
+            if 'salary' in desc or 'credit' in desc or 'neft' in desc:
                 return 'Salary/Income'
             return 'Other Income'
         else:
@@ -140,23 +113,12 @@ if data is not None and not data.empty:
                 return 'Loan/EMI'
             return 'Others'
 
-    # --- Apply categorization ---
     if desc_col != "None":
-        if type_col != "None":
-            data['category'] = data.apply(lambda row: categorize(row[desc_col], row[type_col], row[amount_col]), axis=1)
-        else:
-            data['category'] = data.apply(lambda row: categorize(row[desc_col], None, row[amount_col]), axis=1)
+        data['category'] = data.apply(lambda row: categorize(row[desc_col], row[amount_col]), axis=1)
     else:
-        if type_col != "None":
-            data['category'] = data.apply(lambda row: categorize("", row[type_col], row[amount_col]), axis=1)
-        else:
-            data['category'] = data[amount_col].apply(lambda amt: 'Other Income' if amt > 0 else 'Others')
+        data['category'] = data[amount_col].apply(lambda amt: 'Other Income' if amt > 0 else 'Others')
 
     data['bank'] = data['source_file'].str.extract(r'(apgb|icici|pnb|sbi)', expand=False).str.upper().fillna('OTHER')
-
-    # --- NEW: Set all income categories' amounts to zero for expense analysis ---
-    income_mask = data['category'].isin(['Salary/Income', 'Other Income'])
-    data['expense_only'] = np.where(income_mask, 0, np.where(data[amount_col] < 0, -data[amount_col], 0))
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🏠 Summary", "📊 Trends", "🔮 Predictions", "🚨 Anomalies", "⬇ Download"
@@ -177,17 +139,8 @@ if data is not None and not data.empty:
             total_expense = data[withdrawal_col].sum()
             savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
         else:
-            if type_col != "None":
-                # Use type column for income/expense
-                total_income = data[(data['category'].isin(['Salary/Income', 'Other Income']))][amount_col].sum()
-                total_expense = data['expense_only'].sum()
-            else:
-                if amount_sign == "Income/Credit":
-                    total_income = data[data[amount_col] > 0][amount_col].sum()
-                    total_expense = -data[data[amount_col] < 0][amount_col].sum()
-                else:
-                    total_expense = data[data[amount_col] > 0][amount_col].sum()
-                    total_income = -data[data[amount_col] < 0][amount_col].sum()
+            total_income = data[data[amount_col] > 0][amount_col].sum()
+            total_expense = -data[data[amount_col] < 0][amount_col].sum()
             savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
 
         with col4:
@@ -198,9 +151,8 @@ if data is not None and not data.empty:
         st.error(f"Total Expenses: {total_expense:,.2f}")
 
         st.markdown("### 🥧 Expense Breakdown by Category")
-        # Only use true expenses, exclude income categories
-        expense_data = data[(~data['category'].isin(['Salary/Income', 'Other Income'])) & (data['expense_only'] > 0)]
-        expense_cats = expense_data.groupby('category')['expense_only'].sum().sort_values(ascending=False)
+        expense_data = data[(data[amount_col] < 0) & (~data['category'].isin(['Salary/Income', 'Other Income']))]
+        expense_cats = expense_data.groupby('category')[amount_col].sum().abs().sort_values(ascending=False)
         if not expense_cats.empty:
             fig_pie, ax_pie = plt.subplots()
             expense_cats.plot.pie(autopct='%1.1f%%', ax=ax_pie, colormap='tab20')
@@ -241,7 +193,7 @@ if data is not None and not data.empty:
                 st.warning("⚠ You had negative net flow in some months. Consider reviewing your expenses for those periods.")
 
         st.markdown("### 🏷 Monthly Spending by Category")
-        cat_monthly = data.groupby(['month', 'category'])['expense_only'].sum().unstack().fillna(0)
+        cat_monthly = data.groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
         fig2, ax2 = plt.subplots(figsize=(12,5))
         cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
         plt.ylabel('Amount')
@@ -274,25 +226,10 @@ if data is not None and not data.empty:
         st.pyplot(fig4)
         st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
         next_month_pred = forecast['yhat'].iloc[-1]
-        last_month_pred = forecast['yhat'].iloc[-7] if len(forecast) > 6 else forecast['yhat'].iloc[-2]
-        trend_direction = 'increasing' if next_month_pred > last_month_pred else 'decreasing'
-        st.info(f"*Trend:* Your net flow is forecasted to be *{trend_direction}* over the next 6 months.")
-        st.info(f"*Predicted net flow for next month:* ₹{next_month_pred:,.2f}")
         if next_month_pred < 0:
             st.warning('Your predicted net flow for next month is negative. Consider reducing discretionary expenses or increasing income sources!')
-            st.markdown('*Suggestions:*\n'
-                '- Review your top spending categories and set a monthly budget.\n'
-                '- Try to increase your income streams or savings rate.\n'
-                '- Consider setting up an emergency fund if you do not have one.\n'
-                '- Track your expenses more closely next month.')
         else:
             st.success('Your predicted net flow for next month is positive. Keep up the good financial habits!')
-            st.markdown('*Suggestions:*\n'
-                '- Consider increasing your monthly savings or investments.\n'
-                '- Review your expenses to see if you can save even more.\n'
-                '- Plan for future goals (travel, education, retirement) using your surplus.\n'
-                '- If you have debts, consider paying them down faster.')
-        st.caption('The forecast is based on your historical monthly net flow. Actual results may vary due to unexpected income or expenses.')
 
     with tab4:
         st.markdown("### 🚨 Anomalous Transactions (Potential Outliers)")
@@ -308,38 +245,15 @@ if data is not None and not data.empty:
         st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
 
     st.markdown("## 📝 Recommendations & Insights")
-    # Only use expense categories for recommendations
     top_cats = expense_cats.head(3)
     st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
     top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
     st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
-    if total_income != 0:
-        savings_rate = 100 * (total_income - total_expense) / total_income
-    else:
-        savings_rate = 0
+    savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
     if savings_rate < 20:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!")
-
-    # --- Additional Plain-Language Insights ---
-    st.markdown("### 🧠 Extra Insights")
-    st.info(f"Spending-to-Income Ratio: **{(total_expense/total_income*100):.1f}%**" if total_income > 0 else "N/A")
-    most_freq_day = data[date_col].dt.day_name().mode()[0] if not data[date_col].isnull().all() else "N/A"
-    st.info(f"Most frequent transaction day: **{most_freq_day}**")
-    if not expense_data.empty:
-        largest_exp = expense_data.loc[expense_data['expense_only'].idxmax()]
-        st.info(f"Largest single expense: **₹{largest_exp['expense_only']:,.2f}** ({largest_exp[desc_col] if desc_col != 'None' else ''})")
-        smallest_exp = expense_data.loc[expense_data['expense_only'].idxmin()]
-        st.info(f"Smallest single expense: **₹{smallest_exp['expense_only']:,.2f}** ({smallest_exp[desc_col] if desc_col != 'None' else ''})")
-    monthly['Net'] = monthly
-    neg_months = monthly[monthly < 0].index.tolist()
-    if neg_months:
-        st.warning(f"Months with negative net flow: {', '.join([str(m) for m in neg_months])}")
-    else:
-        st.success("No months with negative net flow.")
-    st.info(f"Number of months with positive net flow: {sum(monthly > 0)}")
-    st.info(f"Number of unique expense categories: {expense_data['category'].nunique()}")
 
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
@@ -349,3 +263,8 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
+
+
+
+  
+  
