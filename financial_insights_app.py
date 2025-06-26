@@ -227,15 +227,24 @@ if data is not None and not data.empty:
         st.pyplot(fig4)
         st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
         next_month_pred = forecast['yhat'].iloc[-1]
-        trend_direction = 'increasing' if forecast['yhat'].diff().iloc[-1] > 0 else 'decreasing'
-        st.info(f"The forecast shows your net flow is likely to be **{trend_direction}** over the next 6 months.")
-        st.info(f"Predicted net flow for next month: **{next_month_pred:,.2f}**")
+        last_month_pred = forecast['yhat'].iloc[-7] if len(forecast) > 6 else forecast['yhat'].iloc[-2]
+        trend_direction = 'increasing' if next_month_pred > last_month_pred else 'decreasing'
+        st.info(f"**Trend:** Your net flow is forecasted to be **{trend_direction}** over the next 6 months.")
+        st.info(f"**Predicted net flow for next month:** ₹{next_month_pred:,.2f}")
         if next_month_pred < 0:
             st.warning('Your predicted net flow for next month is negative. Consider reducing discretionary expenses or increasing income sources!')
-            st.info('**Suggestions:**\n- Review your top spending categories and set a monthly budget.\n- Try to increase your income streams or savings rate.\n- Consider setting up an emergency fund if you do not have one.')
+            st.markdown('**Suggestions:**\n'
+                '- Review your top spending categories and set a monthly budget.\n'
+                '- Try to increase your income streams or savings rate.\n'
+                '- Consider setting up an emergency fund if you do not have one.\n'
+                '- Track your expenses more closely next month.')
         else:
             st.success('Your predicted net flow for next month is positive. Keep up the good financial habits!')
-            st.info('**Suggestions:**\n- Consider increasing your monthly savings or investments.\n- Review your expenses to see if you can save even more.\n- Plan for future goals (travel, education, retirement) using your surplus.')
+            st.markdown('**Suggestions:**\n'
+                '- Consider increasing your monthly savings or investments.\n'
+                '- Review your expenses to see if you can save even more.\n'
+                '- Plan for future goals (travel, education, retirement) using your surplus.\n'
+                '- If you have debts, consider paying them down faster.')
         st.caption('The forecast is based on your historical monthly net flow. Actual results may vary due to unexpected income or expenses.')
 
     with tab4:
@@ -273,3 +282,5 @@ st.markdown(
 )
 
 
+     
+    
