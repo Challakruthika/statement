@@ -132,6 +132,12 @@ if uploaded_file:
     else:
         data['Description'] = ''
 
+    # Debug: Show all rows where the description contains 'salary' or 'income'
+    if desc_col is not None:
+        salary_rows = df[df[desc_col].str.lower().str.contains('salary|income', na=False)]
+        st.write("DEBUG: Raw rows with 'salary' or 'income' in description:")
+        st.write(salary_rows)
+
     # --- Logic for Income/Expense/Net Flow ---
     if deposit_col and withdrawal_col:
         data['Credit'] = pd.to_numeric(df[deposit_col], errors='coerce').fillna(0)
@@ -178,6 +184,16 @@ if uploaded_file:
     salary_expense_rows = data[(data['category'] == 'Salary/Income') & (data['Debit'] > 0)]
     st.write("DEBUG: Salary/Income rows with Debit > 0 (should be empty):")
     st.write(salary_expense_rows)
+
+    # Debug: Show Credit and Debit for salary/income rows
+    salary_data = data[data['Description'].str.lower().str.contains('salary|income', na=False)]
+    st.write("DEBUG: Credit and Debit columns for salary/income rows:")
+    st.write(salary_data[['Description', 'Credit', 'Debit']])
+
+    # For all rows where Description contains 'salary' or 'income', force Debit to 0 and Credit to abs(value)
+    mask = data['Description'].str.lower().str.contains('salary|income', na=False)
+    data.loc[mask, 'Debit'] = 0
+    data.loc[mask, 'Credit'] = data.loc[mask, 'Credit'].abs() + data.loc[mask, 'Debit'].abs()
 
     # --- Metrics ---
     total_income = data['Credit'].sum()
@@ -286,12 +302,9 @@ if uploaded_file:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!") 
-  
+
       
-   
-         
-   
 
-  
-
+   
+      
    
