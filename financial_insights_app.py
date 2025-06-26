@@ -218,68 +218,83 @@ if data is not None and not data.empty:
         plt.ylabel('Net Flow')
         st.pyplot(fig3)
 
-   with tab3:
-    st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
-    monthly = data.groupby('month')[amount_col].sum()
-    df_prophet = monthly.reset_index().rename(columns={'month': 'ds', amount_col: 'y'})
-    df_prophet['ds'] = df_prophet['ds'].astype(str)
-    m = Prophet()
-    m.fit(df_prophet)
-    future = m.make_future_dataframe(periods=6, freq='M')
-    forecast = m.predict(future)
+    with tab3:
+        st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
+        monthly = data.groupby('month')[amount_col].sum()
+        df_prophet = monthly.reset_index().rename(columns={'month': 'ds', amount_col: 'y'})
+        df_prophet['ds'] = df_prophet['ds'].astype(str)
+        m = Prophet()
+        m.fit(df_prophet)
+        future = m.make_future_dataframe(periods=6, freq='M')
+        forecast = m.predict(future)
 
-    fig4 = m.plot(forecast)
-    st.pyplot(fig4)
+        fig4 = m.plot(forecast)
+        st.pyplot(fig4)
 
-    st.markdown("### 📘 What Does This Forecast Mean?")
-    st.write(
-        "The forecast graph above shows your expected financial net flow (income minus expenses) "
-        "for the next 6 months, based on your historical data."
-    )
-    st.write("• **yhat**: Predicted net amount (savings/overspending).")
-    st.write("• **yhat_lower / yhat_upper**: Range of possible outcomes based on historical variability.")
-
-    st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
-
-    next_month_pred = forecast['yhat'].iloc[-1]
-    if next_month_pred < 0:
-        st.warning(
-            '📉 Your predicted net flow for next month is **negative**.\n\n'
-            '👉 This means you might spend more than you earn. Consider reducing discretionary expenses or finding ways to increase income.'
+        st.markdown("### 📘 What Does This Forecast Mean?")
+        st.write(
+            "The forecast graph above shows your expected financial net flow (income minus expenses) "
+            "for the next 6 months, based on your historical data."
         )
-    else:
-        st.success(
-            '📈 Your predicted net flow for next month is **positive**.\n\n'
-            '✅ Keep up your good financial habits and savings momentum!'
-        )
+        st.write("• **yhat**: Predicted net amount (savings/overspending).")
+        st.write("• **yhat_lower / yhat_upper**: Range of possible outcomes based on historical variability.")
 
-    st.markdown("### 📅 Summary of Next 6 Months Forecast")
-    for i in range(1, 7):
-        row = forecast.iloc[-i]
-        label = pd.to_datetime(row['ds']).strftime('%B %Y')
-        pred = row['yhat']
-        if pred >= 0:
-            st.markdown(f"✅ **{label}**: Projected Savings of ₹{pred:,.2f}")
+        st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
+
+        next_month_pred = forecast['yhat'].iloc[-1]
+        if next_month_pred < 0:
+            st.warning(
+                '📉 Your predicted net flow for next month is **negative**.\n\n'
+                '👉 This means you might spend more than you earn. Consider reducing discretionary expenses or finding ways to increase income.'
+            )
         else:
-            st.markdown(f"❌ **{label}**: Projected Overspending of ₹{-pred:,.2f}")
+            st.success(
+                '📈 Your predicted net flow for next month is **positive**.\n\n'
+                '✅ Keep up your good financial habits and savings momentum!'
+            )
 
-    avg_pred = forecast['yhat'].tail(6).mean()
-    score = min(max((avg_pred / total_income) * 100, 0), 100) if total_income != 0 else 0
-    st.markdown("### 💡 Your Financial Health Score")
-    if score >= 75:
-        st.success(f"🏆 Excellent! Your score is {score:.1f}%. You're in great financial shape!")
-    elif score >= 50:
-        st.info(f"👍 Good! Your score is {score:.1f}%. You're doing well, but review your expenses monthly.")
-    elif score >= 25:
-        st.warning(f"⚠ Caution! Your score is {score:.1f}%. Consider budgeting or cutting down on non-essential spend.")
-    else:
-        st.error(f"🚨 Critical! Your score is {score:.1f}%. Immediate action needed to avoid financial stress.")
+        st.markdown("### 📅 Summary of Next 6 Months Forecast")
+        insights = []
+        for i in range(1, 7):
+            row = forecast.iloc[-i]
+            label = pd.to_datetime(row['ds']).strftime('%B %Y')
+            pred = row['yhat']
+            if pred >= 0:
+                st.markdown(f"✅ **{label}**: Projected Savings of ₹{pred:,.2f}")
+                insights.append(f"{label}: Savings of ₹{pred:,.2f}")
+            else:
+                st.markdown(f"❌ **{label}**: Projected Overspending of ₹{-pred:,.2f}")
+                insights.append(f"{label}: Overspending of ₹{-pred:,.2f}")
 
-    st.markdown("### 🧠 AI Tip")
-    st.info(
-        "Based on your forecasted trend and score, automating savings or setting spending limits on top categories could improve your future financial health."
-    )
+        avg_pred = forecast['yhat'].tail(6).mean()
+        score = min(max((avg_pred / total_income) * 100, 0), 100) if total_income != 0 else 0
+        st.markdown("### 💡 Your Financial Health Score")
+        if score >= 75:
+            st.success(f"🏆 Excellent! Your score is {score:.1f}%. You're in great financial shape!")
+        elif score >= 50:
+            st.info(f"👍 Good! Your score is {score:.1f}%. You're doing well, but review your expenses monthly.")
+        elif score >= 25:
+            st.warning(f"⚠ Caution! Your score is {score:.1f}%. Consider budgeting or cutting down on non-essential spend.")
+        else:
+            st.error(f"🚨 Critical! Your score is {score:.1f}%. Immediate action needed to avoid financial stress.")
 
+        st.markdown("### 🧠 AI Tip")
+        if score < 25:
+            st.info("Try identifying high-value non-essential expenses from your top 3 categories and set monthly caps for them.")
+        elif score >= 25 and score < 50:
+            st.info("Track your top expense categories weekly and move unspent amount into savings.")
+        elif score >= 50:
+            st.info("Automate savings by setting a recurring transfer to a high-interest savings account right after salary credit.")
+
+        st.markdown("### 📊 Forecast-Based Insights")
+        if next_month_pred < 0:
+            st.error("🚨 Alert: Next month could result in overspending. Review subscriptions, food delivery, or shopping expenses.")
+        else:
+            st.success("✅ Forecast looks healthy. Continue monitoring and look for small consistent savings to improve score further.")
+
+        st.markdown("#### 🔍 Summary Insights:")
+        for insight in insights:
+            st.markdown(f"- {insight}")
 
     with tab4:
         st.markdown("### 🚨 Anomalous Transactions (Potential Outliers)")
