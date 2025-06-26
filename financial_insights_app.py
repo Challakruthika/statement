@@ -190,12 +190,14 @@ if uploaded_file:
         st.success("Good job! Your savings rate is healthy.")
     st.info(f"You have {len(data)} transactions from {data['Date'].min().date()} to {data['Date'].max().date()}.")
 
-    # --- Expense Breakdown ---
-    st.write("#### Expense Breakdown by Description (Top 10)")
-    if 'Description' in data:
-        exp_by_desc = data.groupby('Description')['Debit'].sum().sort_values(ascending=False).head(10)
+    # --- Expense Breakdown by Description (Top 10, Only Expenses) ---
+    expense_data = data[(data['Debit'] > 0) & (~data['category'].isin(['Salary/Income', 'Other Income']))]
+    exp_by_desc = expense_data.groupby('category')['Debit'].sum().sort_values(ascending=False).head(10)
+    if not exp_by_desc.empty:
         fig1 = px.pie(values=exp_by_desc.values, names=exp_by_desc.index, title='Top 10 Expense Categories')
         st.plotly_chart(fig1, use_container_width=True)
+    else:
+        st.info('No expense categories found for pie chart.')
 
     # --- Monthly Trends ---
     st.write("#### Monthly Income & Expense Trends")
@@ -248,36 +250,14 @@ if uploaded_file:
     # --- Recommendations & Insights (Expense Categories Only) ---
     st.markdown("## 📝 Recommendations & Insights")
 
-    # Only consider expenses for top spending categories
-    if 'Debit' in data.columns and data['Debit'].sum() > 0:
-        expense_data = data[data['Debit'] > 0]
-        top_cats = (
-            expense_data.groupby('category')['Debit']
-            .sum()
-            .sort_values(ascending=False)
-            .head(3)
-        )
-    elif 'Credit' in data.columns and 'Debit' in data.columns:
-        # Fallback: use net flow if Debit is not available
-        expense_data = data[(data['Credit'] - data['Debit']) < 0]
-        top_cats = (
-            expense_data.groupby('category')['Debit']
-            .sum()
-            .abs()
-            .sort_values(ascending=False)
-            .head(3)
-        )
-    elif amount_col in data.columns:
-        expense_data = data[data[amount_col] < 0]
-        top_cats = (
-            expense_data.groupby('category')[amount_col]
-            .sum()
-            .abs()
-            .sort_values(ascending=False)
-            .head(3)
-        )
-    else:
-        top_cats = pd.Series(dtype=float)
+    # Only consider expenses for top spending categories, exclude income
+    expense_data = data[(data['Debit'] > 0) & (~data['category'].isin(['Salary/Income', 'Other Income']))]
+    top_cats = (
+        expense_data.groupby('category')['Debit']
+        .sum()
+        .sort_values(ascending=False)
+        .head(3)
+    )
 
     if not top_cats.empty:
         st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
@@ -294,5 +274,3 @@ if uploaded_file:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!") 
-   
-    
