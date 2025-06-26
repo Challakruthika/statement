@@ -344,8 +344,8 @@ if data is not None and not data.empty:
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
     "<div style='text-align:center; color: #888;'>"
-    "Made with ❤ using Streamlit | "
-    "<a href='https://github.com/Challakruthika/data_bank' target='_blank'>GitHub</a>"
+    "Chenna AI Tech Solutions"
+
     "</div>",
     unsafe_allow_html=True
 )
