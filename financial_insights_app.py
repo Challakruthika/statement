@@ -190,8 +190,9 @@ if uploaded_file:
         st.success("Good job! Your savings rate is healthy.")
     st.info(f"You have {len(data)} transactions from {data['Date'].min().date()} to {data['Date'].max().date()}.")
 
-    # --- Expense Breakdown by Description (Top 10, Only Expenses) ---
+    # --- Expense Breakdown by Description (Top 10, Only True Expenses) ---
     expense_data = data[(data['Debit'] > 0) & (~data['category'].isin(['Salary/Income', 'Other Income']))]
+    st.write("Categories in expense_data:", expense_data['category'].unique())
     exp_by_desc = expense_data.groupby('category')['Debit'].sum().sort_values(ascending=False).head(10)
     if not exp_by_desc.empty:
         fig1 = px.pie(values=exp_by_desc.values, names=exp_by_desc.index, title='Top 10 Expense Categories')
@@ -274,5 +275,7 @@ if uploaded_file:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!") 
-
-
+    
+  
+    
+   
