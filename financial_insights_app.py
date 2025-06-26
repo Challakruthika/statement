@@ -58,8 +58,8 @@ if data is not None and not data.empty:
     st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
-    type_col = st.selectbox("Select the type column (Credit/Debit, required)", options=data.columns)
-    amount_col = st.selectbox("Select the amount/value column", options=[col for col in data.columns if col != type_col])
+    type_col = st.selectbox("Select the type column (CR/DR)", options=data.columns)
+    amount_col = st.selectbox("Select the amount column", options=[col for col in data.columns if col != type_col])
 
     # --- Parse and sign the amount using Type column ---
     data[type_col] = data[type_col].astype(str).str.lower().str.strip()
@@ -125,4 +125,4 @@ if data is not None and not data.empty:
 
 else:
     st.info("👆 Please upload one or more CSV files to begin.")
-         
+  
