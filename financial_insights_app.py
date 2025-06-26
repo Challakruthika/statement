@@ -59,31 +59,26 @@ if data is not None and not data.empty:
     st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
+    amount_col = st.selectbox("Select the amount column", options=data.columns)
+    type_col = st.selectbox("Select the type column (Credit/Debit, optional)", options=["None"] + list(data.columns))
 
-    use_separate = st.checkbox("My statement has separate columns for Deposit and Withdrawal")
-    if use_separate:
-        deposit_col = st.selectbox("Select the deposit/credit column", options=data.columns)
-        withdrawal_col = st.selectbox("Select the withdrawal/debit column", options=data.columns)
-        data[deposit_col] = pd.to_numeric(data[deposit_col], errors='coerce').fillna(0)
-        data[withdrawal_col] = pd.to_numeric(data[withdrawal_col], errors='coerce').fillna(0)
-        data['net_amount'] = data[deposit_col] - data[withdrawal_col]
-        amount_col = 'net_amount'
+    # --- Parse Dates ---
+    data['Date'] = pd.to_datetime(data[date_col], errors='coerce')
+    if desc_col != "None":
+        data['Description'] = data[desc_col].astype(str)
     else:
-        amount_col = st.selectbox("Select the amount column", options=data.columns)
-        amount_sign = st.radio(
-            "In your selected amount column, what do positive values mean?",
-            ("Income/Credit", "Expense/Debit")
-        )
-        data[amount_col] = pd.to_numeric(data[amount_col], errors='coerce')
-        if amount_sign == "Expense/Debit":
-            data[amount_col] = -data[amount_col]
+        data['Description'] = ""
 
-    data[date_col] = pd.to_datetime(data[date_col], errors='coerce')
-    data = data.dropna(subset=[date_col])
-    data = data.dropna(subset=[amount_col])
-    data['month'] = data[date_col].dt.to_period('M')
+    # --- Determine Credit and Debit using 'Type' column if present ---
+    if type_col != "None" and type_col in data.columns:
+        data['Type'] = data[type_col].str.lower()
+        data['Credit'] = np.where(data['Type'] == 'credit', data[amount_col], 0)
+        data['Debit'] = np.where(data['Type'] == 'debit', data[amount_col], 0)
+    else:
+        data['Credit'] = np.where(data[amount_col] > 0, data[amount_col], 0)
+        data['Debit'] = np.where(data[amount_col] < 0, -data[amount_col], 0)
 
-    # --- Improved Categorization ---
+    # --- Categorization ---
     def categorize(desc, amt):
         desc = str(desc).lower()
         if amt > 0:
@@ -97,231 +92,105 @@ if data is not None and not data.empty:
                 return 'Utilities'
             if 'rent' in desc or 'lease' in desc:
                 return 'Rent'
-            if 'atm' in desc or 'cash' in desc:
-                return 'Cash Withdrawal'
-            if 'restaurant' in desc or 'food' in desc or 'cafe' in desc:
+            if 'food' in desc or 'restaurant' in desc or 'dining' in desc or 'cafe' in desc:
                 return 'Food & Dining'
-            if 'travel' in desc or 'uber' in desc or 'ola' in desc or 'flight' in desc:
+            if 'travel' in desc or 'flight' in desc or 'train' in desc or 'uber' in desc or 'ola' in desc:
                 return 'Travel'
+            if 'shopping' in desc or 'amazon' in desc or 'flipkart' in desc:
+                return 'Shopping'
+            if 'medical' in desc or 'hospital' in desc or 'pharmacy' in desc:
+                return 'Medical'
             if 'insurance' in desc:
                 return 'Insurance'
             if 'emi' in desc or 'loan' in desc:
                 return 'Loan/EMI'
-            return 'Others'
+            if 'fuel' in desc or 'petrol' in desc or 'diesel' in desc:
+                return 'Fuel'
+            return 'Other Expense'
 
-    if desc_col != "None":
-        data['category'] = data.apply(lambda row: categorize(row[desc_col], row[amount_col]), axis=1)
-    else:
-        data['category'] = data[amount_col].apply(lambda amt: 'Other Income' if amt > 0 else 'Others')
+    data['Net'] = data['Credit'] - data['Debit']
+    data['category'] = data.apply(lambda row: categorize(row['Description'], row['Net']), axis=1)
 
-    data['bank'] = data['source_file'].str.extract(r'(apgb|icici|pnb|sbi)', expand=False).str.upper().fillna('OTHER')
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🏠 Summary", "📊 Trends", "🔮 Predictions", "🚨 Anomalies", "⬇ Download"
-    ])
+    # --- Main Tabs ---
+    tab1, tab2, tab3 = st.tabs(["Overview", "Insights", "Prediction"])
 
     with tab1:
-        st.markdown("## 📈 Summary Statistics")
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Records", len(data))
-        with col2:
-            st.metric("Total Net Flow", f"{data[amount_col].sum():,.2f}")
-        with col3:
-            st.metric("Avg. Monthly Net Flow", f"{data.groupby('month')[amount_col].sum().mean():,.2f}")
+        st.markdown("### 📅 Monthly Summary")
+        data['month'] = data['Date'].dt.to_period('M').astype(str)
+        monthly = data.groupby('month').agg({'Credit': 'sum', 'Debit': 'sum', 'Net': 'sum'})
+        st.dataframe(monthly)
 
-        if use_separate:
-            total_income = data[deposit_col].sum()
-            total_expense = data[withdrawal_col].sum()
-            savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
-        else:
-            if amount_sign == "Income/Credit":
-                total_income = data[data[amount_col] > 0][amount_col].sum()
-                total_expense = -data[data[amount_col] < 0][amount_col].sum()
-            else:
-                total_expense = data[data[amount_col] > 0][amount_col].sum()
-                total_income = -data[data[amount_col] < 0][amount_col].sum()
-            savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
-
-        with col4:
-            st.metric("Savings Rate (%)", f"{savings_rate:.2f}")
-
-        st.markdown("### 💵 Income vs. Expense Breakdown")
-        st.success(f"Total Income: {total_income:,.2f}")
-        st.error(f"Total Expenses: {total_expense:,.2f}")
-
-        st.markdown("### 🥧 Expense Breakdown by Category")
-        # Only use negative amounts (expenses) and exclude income categories
-        expense_data = data[(data[amount_col] < 0) & (~data['category'].isin(['Salary/Income', 'Other Income']))]
-        expense_cats = expense_data.groupby('category')[amount_col].sum().abs().sort_values(ascending=False)
-        if not expense_cats.empty:
-            fig_pie, ax_pie = plt.subplots()
-            expense_cats.plot.pie(autopct='%1.1f%%', ax=ax_pie, colormap='tab20')
-            plt.ylabel('')
+        st.markdown("### 🥧 Expense Breakdown")
+        # Only show true expenses (exclude income categories)
+        expense_cats = data.loc[~data['category'].isin(['Salary/Income', 'Other Income']) & (data['Debit'] > 0)]
+        pie_data = expense_cats.groupby('category')['Debit'].sum()
+        fig_pie, ax_pie = plt.subplots()
+        if not pie_data.empty:
+            pie_data.plot.pie(autopct='%1.1f%%', ax=ax_pie)
+            ax_pie.set_ylabel('')
             st.pyplot(fig_pie)
-            top3 = expense_cats.head(3)
-            st.info(
-                f"*Top 3 Expense Categories:*\n"
-                + "\n".join([f"- {cat}: {amt:,.2f}" for cat, amt in top3.items()])
-            )
         else:
-            st.info("No expenses found for pie chart.")
-
-        st.markdown("### 🏦 Bank-wise Net Flow")
-        bank_total = data.groupby('bank')[amount_col].sum().sort_values(ascending=False)
-        st.bar_chart(bank_total)
-        if not bank_total.empty:
-            top_bank = bank_total.index[0]
-            st.info(f"*Insight:* Your highest net flow is with *{top_bank}* bank.")
+            st.info("No expenses found to plot.")
 
     with tab2:
-        st.markdown("### 📅 Monthly Net Flow (Income - Expenses)")
-        monthly = data.groupby('month')[amount_col].sum()
-        fig, ax = plt.subplots(figsize=(10,4))
-        monthly.plot(kind='bar', ax=ax, color='#4F8BF9')
-        plt.ylabel('Net Amount')
-        st.pyplot(fig)
-        if not monthly.empty:
-            trend = "increasing" if monthly.diff().mean() > 0 else "decreasing"
-            best_month = monthly.idxmax()
-            worst_month = monthly.idxmin()
-            st.info(
-                f"*Trend:* Your monthly net flow is {trend} over time.\n"
-                f"*Best Month:* {best_month} ({monthly.max():,.2f})\n"
-                f"*Worst Month:* {worst_month} ({monthly.min():,.2f})"
-            )
-            if (monthly < 0).any():
-                st.warning("⚠ You had negative net flow in some months. Consider reviewing your expenses for those periods.")
+        st.markdown("### 📝 Recommendations & Insights")
+        total_income = data['Credit'].sum()
+        total_expense = data['Debit'].sum()
+        net_savings = total_income - total_expense
 
-        st.markdown("### 🏷 Monthly Spending by Category")
-        cat_monthly = data.groupby(['month', 'category'])[amount_col].sum().unstack().fillna(0)
-        fig2, ax2 = plt.subplots(figsize=(12,5))
-        cat_monthly.plot(kind='bar', stacked=True, ax=ax2, colormap='tab20')
-        plt.ylabel('Amount')
-        st.pyplot(fig2)
-        top_cat = expense_cats.head(1)
-        if not top_cat.empty:
-            st.info(
-                f"*Insights:*\n"
-                f"- Your top spending category is *{top_cat.index[0]}* with a total of *{top_cat.iloc[0]:,.2f}*.\n"
-                f"- Consider reviewing this category for potential savings."
-            )
+        st.metric("Total Income", f"₹{total_income:,.2f}")
+        st.metric("Total Expenses", f"₹{total_expense:,.2f}")
+        st.metric("Net Savings", f"₹{net_savings:,.2f}")
 
-        st.markdown("### 🏦 Monthly Net Flow by Bank")
-        bank_monthly = data.groupby(['month', 'bank'])[amount_col].sum().unstack().fillna(0)
-        fig3, ax3 = plt.subplots(figsize=(12,5))
-        bank_monthly.plot(ax=ax3)
-        plt.ylabel('Net Flow')
-        st.pyplot(fig3)
+        # Top 3 expense categories
+        top_expense_cats = expense_cats.groupby('category')['Debit'].sum().sort_values(ascending=False).head(3)
+        if not top_expense_cats.empty:
+            st.info(f"Your top spending categories are: {', '.join(top_expense_cats.index)}. Consider reviewing these for savings opportunities.")
+
+        # Additional, easy-to-understand insights
+        st.markdown("## 📊 Additional Insights")
+        if total_income > 0:
+            spend_ratio = total_expense / total_income
+            if spend_ratio > 1:
+                st.warning(f"You're spending more than you earn! For every ₹1 you earn, you spend ₹{spend_ratio:.2f}.")
+            elif spend_ratio > 0.8:
+                st.info(f"You're spending about ₹{spend_ratio:.2f} for every ₹1 you earn. Try to save more if possible.")
+            else:
+                st.success(f"Good job! You're saving a healthy portion of your income.")
+
+        savings_rate = (net_savings / total_income * 100) if total_income > 0 else 0
+        st.metric("Savings Rate (%)", f"{savings_rate:.2f}")
+
+        if savings_rate < 10:
+            st.warning("Your savings rate is quite low. Try to increase your savings for better financial security.")
+        elif savings_rate > 30:
+            st.success("Excellent savings rate! Keep it up.")
 
     with tab3:
         st.markdown("### 🔮 Net Flow Forecast (Next 6 Months)")
-        monthly = data.groupby('month')[amount_col].sum()
-        df_prophet = monthly.reset_index().rename(columns={'month': 'ds', amount_col: 'y'})
+        monthly = data.groupby('month')['Net'].sum()
+        df_prophet = monthly.reset_index().rename(columns={'month': 'ds', 'Net': 'y'})
         df_prophet['ds'] = df_prophet['ds'].astype(str)
-        m = Prophet()
-        m.fit(df_prophet)
-        future = m.make_future_dataframe(periods=6, freq='M')
-        forecast = m.predict(future)
-        fig4 = m.plot(forecast)
-        st.pyplot(fig4)
-        st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
-        next_month_pred = forecast['yhat'].iloc[-1]
-        last_month_pred = forecast['yhat'].iloc[-7] if len(forecast) > 6 else forecast['yhat'].iloc[-2]
-        trend_direction = 'increasing' if next_month_pred > last_month_pred else 'decreasing'
-        st.info(f"**Trend:** Your net flow is forecasted to be **{trend_direction}** over the next 6 months.")
-        st.info(f"**Predicted net flow for next month:** ₹{next_month_pred:,.2f}")
-        if next_month_pred < 0:
-            st.warning('Your predicted net flow for next month is negative. Consider reducing discretionary expenses or increasing income sources!')
-            st.markdown('**Suggestions:**\n'
-                '- Review your top spending categories and set a monthly budget.\n'
-                '- Try to increase your income streams or savings rate.\n'
-                '- Consider setting up an emergency fund if you do not have one.\n'
-                '- Track your expenses more closely next month.')
+        # Prophet needs at least 2 data points
+        if df_prophet['y'].count() < 2:
+            st.warning("Not enough data to make a forecast. Please upload more data.")
         else:
-            st.success('Your predicted net flow for next month is positive. Keep up the good financial habits!')
-            st.markdown('**Suggestions:**\n'
-                '- Consider increasing your monthly savings or investments.\n'
-                '- Review your expenses to see if you can save even more.\n'
-                '- Plan for future goals (travel, education, retirement) using your surplus.\n'
-                '- If you have debts, consider paying them down faster.')
-        st.caption('The forecast is based on your historical monthly net flow. Actual results may vary due to unexpected income or expenses.')
+            m = Prophet()
+            m.fit(df_prophet)
+            future = m.make_future_dataframe(periods=6, freq='M')
+            forecast = m.predict(future)
+            fig4 = m.plot(forecast)
+            st.pyplot(fig4)
+            st.dataframe(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6))
+            next_month_pred = forecast.iloc[-6]['yhat']
+            last_month_actual = df_prophet['y'].iloc[-1]
+            trend = "increase" if next_month_pred > last_month_actual else "decrease"
+            st.info(f"Your net flow is forecasted to {trend} next month (Predicted: ₹{next_month_pred:,.2f}).")
+            if next_month_pred < 0:
+                st.warning("Your forecasted net flow is negative. Consider reducing expenses, increasing income, or setting up an emergency fund.")
+            else:
+                st.success("Your forecasted net flow is positive! Consider increasing your savings or investments, and plan for future goals.")
+            st.caption("Forecasts are based on your historical data and may vary.")
 
-    with tab4:
-        st.markdown("### 🚨 Anomalous Transactions (Potential Outliers)")
-        iso = IsolationForest(contamination=0.01, random_state=42)
-        data['anomaly'] = iso.fit_predict(data[[amount_col]])
-        anomalies = data[data['anomaly'] == -1]
-        st.dataframe(anomalies[[date_col, amount_col, 'category', 'source_file']].head(10))
-        st.info(f"{len(anomalies)} anomalous transactions detected.** Review these for possible errors or fraud.")
-
-    with tab5:
-        st.markdown("### ⬇ Download Data & Forecast")
-        st.download_button("Download Cleaned Data (CSV)", data.to_csv(index=False), "cleaned_data.csv")
-        st.download_button("Download Forecast (CSV)", forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False), "forecast.csv")
-
-    st.markdown("## 📝 Recommendations & Insights")
-    # Only use expense categories for recommendations
-    top_cats = expense_cats.head(3)
-    st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
-    top_banks = data.groupby('bank')[amount_col].sum().sort_values(ascending=False).head(1)
-    st.info(f"Your highest net flow is with: {top_banks.index[0]}.")
-    savings_rate = 100 * (total_income - total_expense) / total_income if total_income != 0 else 0
-    if savings_rate < 20:
-        st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
-    else:
-        st.success("🎉 Your savings rate is healthy!")
-
-    # --- Additional Understandable Insights ---
-    st.markdown("## 📊 Additional Insights")
-
-    # 1. Spending vs. Income Ratio
-    if total_income > 0:
-        spend_ratio = total_expense / total_income
-        if spend_ratio > 1:
-            st.warning(f"You're spending more than you earn! For every ₹1 you earn, you spend ₹{spend_ratio:.2f}.")
-        elif spend_ratio > 0.8:
-            st.info(f"You're spending about ₹{spend_ratio:.2f} for every ₹1 you earn. Try to save more if possible.")
-        else:
-            st.success(f"Great job! You're spending only ₹{spend_ratio:.2f} for every ₹1 you earn.")
-
-    # 2. Most Frequent Transaction Day
-    most_common_day = data[date_col].dt.day_name().mode()[0]
-    st.info(f"Most of your transactions happen on **{most_common_day}s**. This could be your shopping or bill payment day.")
-
-    # 3. Largest Single Expense
-    largest_expense = data[data[amount_col] < 0][amount_col].min()
-    if not np.isnan(largest_expense):
-        largest_expense_row = data[data[amount_col] == largest_expense].iloc[0]
-        st.warning(f"Your largest single expense was ₹{abs(largest_expense):,.2f} for \"{largest_expense_row['category']}\" on {largest_expense_row[date_col].date()}.")
-
-    # 4. Months with Negative Net Flow
-    negative_months = monthly[monthly < 0]
-    if not negative_months.empty:
-        st.warning(f"You had negative net flow in {len(negative_months)} month(s): {', '.join(negative_months.index.astype(str))}. Try to review your spending for these months.")
-
-    # 5. Consistency of Savings
-    positive_months = monthly[monthly > 0]
-    if len(positive_months) == len(monthly):
-        st.success("You had a positive net flow every month! Consistent savings is a great habit.")
-    elif len(positive_months) > 0:
-        st.info(f"You had a positive net flow in {len(positive_months)} out of {len(monthly)} months.")
-
-    # 6. Category Diversity
-    n_cats = data['category'].nunique()
-    st.info(f"You spent money in {n_cats} different categories. Diversifying your spending is normal, but check if some categories can be reduced.")
-
-    # 7. Smallest Expense
-    smallest_expense = data[data[amount_col] < 0][amount_col].max()
-    if not np.isnan(smallest_expense):
-        smallest_expense_row = data[data[amount_col] == smallest_expense].iloc[0]
-        st.info(f"Your smallest expense was ₹{abs(smallest_expense):,.2f} for \"{smallest_expense_row['category']}\" on {smallest_expense_row[date_col].date()}.")
-
-st.markdown(
-    "<hr style='margin-top:2em; margin-bottom:1em;'>"
-    "<div style='text-align:center; color: #888;'>"
-    "Made with ❤ using Streamlit | "
-    "<a href='https://github.com/Challakruthika/data_bank' target='_blank'>GitHub</a>"
-    "</div>",
-    unsafe_allow_html=True
-)
+else:
+    st.info("👆 Please upload one or more CSV files to begin.")
