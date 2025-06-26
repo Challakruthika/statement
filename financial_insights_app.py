@@ -254,6 +254,18 @@ if data is not None and not data.empty:
             )
 
         st.markdown("### 📅 Summary of Next 6 Months Forecast")
+        insights = []
+        for i in range(1, 7):
+            row = forecast.iloc[-i]
+            label = pd.to_datetime(row['ds']).strftime('%B %Y')
+            pred = row['yhat']
+            if pred >= 0:
+                st.markdown(f"✅ **{label}**: Projected Savings of ₹{pred:,.2f}")
+                insights.append(f"{label}: Savings of ₹{pred:,.2f}")
+            else:
+                st.markdown(f"❌ **{label}**: Projected Overspending of ₹{-pred:,.2f}")
+                insights.append(f"{label}: Overspending of ₹{-pred:,.2f}")
+
         avg_pred = forecast['yhat'].tail(6).mean()
         score = min(max((avg_pred / total_income) * 100, 0), 100) if total_income != 0 else 0
         st.markdown("### 💡 Your Financial Health Score")
