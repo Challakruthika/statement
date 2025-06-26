@@ -224,20 +224,38 @@ if uploaded_file:
 
     st.caption("Made with ❤️ for Indian bank statements. Handles SBI, ICICI, PNB, APGB, and more!")
 
-    # --- Improved Categorization Usage ---
-    if desc_col:
-        data['category'] = data.apply(lambda row: categorize(row['Description'], row['Credit'] - row['Debit']), axis=1)
-    else:
-        data['category'] = (data['Credit'] - data['Debit']).apply(lambda amt: 'Other Income' if amt > 0 else 'Other Expense')
-
     # --- Recommendations & Insights (Expense Categories Only) ---
     st.markdown("## 📝 Recommendations & Insights")
-    if 'Debit' in data.columns:
+
+    # Only consider expenses for top spending categories
+    if 'Debit' in data.columns and data['Debit'].sum() > 0:
         expense_data = data[data['Debit'] > 0]
-        top_cats = expense_data.groupby('category')['Debit'].sum().sort_values(ascending=False).head(3)
-    else:
+        top_cats = (
+            expense_data.groupby('category')['Debit']
+            .sum()
+            .sort_values(ascending=False)
+            .head(3)
+        )
+    elif 'Credit' in data.columns and 'Debit' in data.columns:
         expense_data = data[(data['Credit'] - data['Debit']) < 0]
-        top_cats = expense_data.groupby('category')['Debit'].sum().abs().sort_values(ascending=False).head(3) if 'Debit' in data.columns else expense_data.groupby('category')[amount_col].sum().abs().sort_values(ascending=False).head(3)
+        top_cats = (
+            expense_data.groupby('category')['Debit']
+            .sum()
+            .abs()
+            .sort_values(ascending=False)
+            .head(3)
+        )
+    elif amount_col in data.columns:
+        expense_data = data[data[amount_col] < 0]
+        top_cats = (
+            expense_data.groupby('category')[amount_col]
+            .sum()
+            .abs()
+            .sort_values(ascending=False)
+            .head(3)
+        )
+    else:
+        top_cats = pd.Series(dtype=float)
 
     if not top_cats.empty:
         st.info(f"Your top spending categories are: {', '.join(top_cats.index)}. Consider reviewing these for savings opportunities.")
@@ -253,3 +271,5 @@ if uploaded_file:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!")
+
+ 
