@@ -59,7 +59,12 @@ if data is not None and not data.empty:
     st.markdown("### 🛠 Select Columns")
     date_col = st.selectbox("Select the date column", options=data.columns)
     desc_col = st.selectbox("Select the description column (optional)", options=["None"] + list(data.columns))
-    amount_col = st.selectbox("Select the amount column", options=data.columns)
+    # Only show columns that are not the date or description for amount selection
+    exclude_cols = [date_col]
+    if desc_col != "None":
+        exclude_cols.append(desc_col)
+    amount_options = [col for col in data.columns if col not in exclude_cols]
+    amount_col = st.selectbox("Select the amount column", options=amount_options)
     type_col = st.selectbox("Select the type column (Credit/Debit, optional)", options=["None"] + list(data.columns))
 
     # --- Parse Dates ---
@@ -194,3 +199,4 @@ if data is not None and not data.empty:
 
 else:
     st.info("👆 Please upload one or more CSV files to begin.")
+
