@@ -272,6 +272,51 @@ if data is not None and not data.empty:
     else:
         st.success("🎉 Your savings rate is healthy!")
 
+    # --- Additional Understandable Insights ---
+    st.markdown("## 📊 Additional Insights")
+
+    # 1. Spending vs. Income Ratio
+    if total_income > 0:
+        spend_ratio = total_expense / total_income
+        if spend_ratio > 1:
+            st.warning(f"You're spending more than you earn! For every ₹1 you earn, you spend ₹{spend_ratio:.2f}.")
+        elif spend_ratio > 0.8:
+            st.info(f"You're spending about ₹{spend_ratio:.2f} for every ₹1 you earn. Try to save more if possible.")
+        else:
+            st.success(f"Great job! You're spending only ₹{spend_ratio:.2f} for every ₹1 you earn.")
+
+    # 2. Most Frequent Transaction Day
+    most_common_day = data[date_col].dt.day_name().mode()[0]
+    st.info(f"Most of your transactions happen on **{most_common_day}s**. This could be your shopping or bill payment day.")
+
+    # 3. Largest Single Expense
+    largest_expense = data[data[amount_col] < 0][amount_col].min()
+    if not np.isnan(largest_expense):
+        largest_expense_row = data[data[amount_col] == largest_expense].iloc[0]
+        st.warning(f"Your largest single expense was ₹{abs(largest_expense):,.2f} for \"{largest_expense_row['category']}\" on {largest_expense_row[date_col].date()}.")
+
+    # 4. Months with Negative Net Flow
+    negative_months = monthly[monthly < 0]
+    if not negative_months.empty:
+        st.warning(f"You had negative net flow in {len(negative_months)} month(s): {', '.join(negative_months.index.astype(str))}. Try to review your spending for these months.")
+
+    # 5. Consistency of Savings
+    positive_months = monthly[monthly > 0]
+    if len(positive_months) == len(monthly):
+        st.success("You had a positive net flow every month! Consistent savings is a great habit.")
+    elif len(positive_months) > 0:
+        st.info(f"You had a positive net flow in {len(positive_months)} out of {len(monthly)} months.")
+
+    # 6. Category Diversity
+    n_cats = data['category'].nunique()
+    st.info(f"You spent money in {n_cats} different categories. Diversifying your spending is normal, but check if some categories can be reduced.")
+
+    # 7. Smallest Expense
+    smallest_expense = data[data[amount_col] < 0][amount_col].max()
+    if not np.isnan(smallest_expense):
+        smallest_expense_row = data[data[amount_col] == smallest_expense].iloc[0]
+        st.info(f"Your smallest expense was ₹{abs(smallest_expense):,.2f} for \"{smallest_expense_row['category']}\" on {smallest_expense_row[date_col].date()}.")
+
 st.markdown(
     "<hr style='margin-top:2em; margin-bottom:1em;'>"
     "<div style='text-align:center; color: #888;'>"
@@ -280,7 +325,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
-
-
-     
-    
