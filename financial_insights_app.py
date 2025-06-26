@@ -127,7 +127,7 @@ if uploaded_file:
     # --- Data Preparation ---
     data = pd.DataFrame()
     data['Date'] = pd.to_datetime(df[date_col], errors='coerce')
-    if desc_col:
+    if desc_col is not None:
         data['Description'] = df[desc_col].astype(str)
     else:
         data['Description'] = ''
@@ -274,3 +274,5 @@ if uploaded_file:
         st.warning("⚠ Your savings rate is below 20%. Consider increasing your savings for better financial health.")
     else:
         st.success("🎉 Your savings rate is healthy!") 
+
+
