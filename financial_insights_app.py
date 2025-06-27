@@ -4,6 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
 from prophet import Prophet
+import joblib
+import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
 
 # --- Custom CSS for a modern look ---
 st.markdown("""
@@ -93,35 +97,16 @@ if data is not None and not data.empty:
     data['month'] = data[date_col].dt.to_period('M')
 
     # --- Categorization ---
-    def categorize(desc, amt):
-        desc = str(desc).lower()
-        if amt > 0:
-            if 'salary' in desc or 'credit' in desc or 'neft' in desc:
-                return 'Salary/Income'
-            return 'Other Income'
-        else:
-            if 'grocery' in desc or 'supermarket' in desc or 'mart' in desc:
-                return 'Groceries'
-            if 'electric' in desc or 'water' in desc or 'gas' in desc or 'utility' in desc:
-                return 'Utilities'
-            if 'rent' in desc or 'lease' in desc:
-                return 'Rent'
-            if 'atm' in desc or 'cash' in desc:
-                return 'Cash Withdrawal'
-            if 'restaurant' in desc or 'food' in desc or 'cafe' in desc:
-                return 'Food & Dining'
-            if 'travel' in desc or 'uber' in desc or 'ola' in desc or 'flight' in desc:
-                return 'Travel'
-            if 'insurance' in desc:
-                return 'Insurance'
-            if 'emi' in desc or 'loan' in desc:
-                return 'Loan/EMI'
-            return 'Others'
-
     if desc_col != "None":
-        data['category'] = data.apply(lambda row: categorize(row[desc_col], row[amount_col]), axis=1)
+        descs = data[desc_col].astype(str).fillna("")
+        n_clusters = min(8, len(data))  # up to 8 clusters or number of rows
+        tfidf = TfidfVectorizer(max_features=100)
+        X = tfidf.fit_transform(descs)
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        clusters = kmeans.fit_predict(X)
+        data['category'] = [f"Cluster {i+1}" for i in clusters]
     else:
-        data['category'] = data[amount_col].apply(lambda amt: 'Other Income' if amt > 0 else 'Others')
+        data['category'] = 'Cluster 1'
 
     data['bank'] = data['source_file'].str.extract(r'(apgb|icici|pnb|sbi)', expand=False).str.upper().fillna('OTHER')
 
@@ -350,3 +335,4 @@ st.markdown(
     unsafe_allow_html=True
 )
       
+
