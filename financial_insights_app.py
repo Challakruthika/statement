@@ -100,11 +100,28 @@ if data is not None and not data.empty:
     if desc_col != "None":
         descs = data[desc_col].astype(str).fillna("")
         n_clusters = min(8, len(data))  # up to 8 clusters or number of rows
-        tfidf = TfidfVectorizer(max_features=100)
+        tfidf = TfidfVectorizer(max_features=100, stop_words='english')
         X = tfidf.fit_transform(descs)
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         clusters = kmeans.fit_predict(X)
-        data['category'] = [f"Cluster {i+1}" for i in clusters]
+        data['cluster_id'] = clusters
+        # Get top 3 words for each cluster
+        feature_names = tfidf.get_feature_names_out()
+        cluster_labels = {}
+        for i in range(n_clusters):
+            idx = np.where(clusters == i)[0]
+            if len(idx) == 0:
+                cluster_labels[i] = f"Cluster {i+1}"
+                continue
+            cluster_tfidf = X[idx].mean(axis=0)
+            top_indices = np.array(cluster_tfidf).ravel().argsort()[::-1][:3]
+            top_words = [feature_names[j] for j in top_indices if cluster_tfidf[0, j] > 0]
+            if top_words:
+                label = ', '.join(top_words)
+                cluster_labels[i] = f"{label}"
+            else:
+                cluster_labels[i] = f"Cluster {i+1}"
+        data['category'] = data['cluster_id'].map(cluster_labels)
     else:
         data['category'] = 'Cluster 1'
 
@@ -336,3 +353,6 @@ st.markdown(
 )
       
 
+
+ 
+    
